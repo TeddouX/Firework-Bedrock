@@ -5,7 +5,7 @@
 namespace Firework
 {
     
-constexpr std::size_t MAX_PACKET_SIZE = 2048ULL;
+constexpr std::size_t MAX_PACKET_SIZE = 1600ULL;
 
 struct AddressInfo {
     std::uint16_t port;

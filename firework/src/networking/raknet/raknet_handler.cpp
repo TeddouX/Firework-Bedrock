@@ -13,6 +13,10 @@ namespace Firework
 auto encode_string(const std::string &str, std::vector<std::uint8_t> &bytes) -> void;
 auto insert_at_vec_end(const std::vector<std::uint8_t> &src, std::vector<std::uint8_t> &dest) -> void;
 auto insert_at_vec_end(const std::uint8_t *src, std::size_t size, std::vector<std::uint8_t> &dest) -> void;
+auto add_id(std::vector<std::uint8_t> &dest, RakNetPacketType packetType) -> void;
+auto ip_to_bytes(const std::string &ip, std::uint16_t port, std::uint8_t type) -> std::vector<std::uint8_t>;
+
+#define CREATE_DATA_VECTOR(size) std::vector<std::uint8_t> data{}; data.reserve(size)
 
 RakNetHandler::RakNetHandler(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer) 
     : _guid{0}
@@ -105,31 +109,19 @@ auto RakNetHandler::handle_unconnected_ping(const UDPPacket &packet) -> void {
     // ID; Time (long); Server GUID (long); Magic; Server ID String
     const size_t packetSizeBytes = 1 
         + sizeof(std::uint64_t) 
-        + sizeof(std::uint64_t) 
+        + sizeof(_guid)
         + sizeof(RAKNET_MAGIC) 
         + _cachedServerIDString.size();
 
-    std::vector<std::uint8_t> unconnectedPongData{};
-    unconnectedPongData.reserve(packetSizeBytes);
+    CREATE_DATA_VECTOR(packetSizeBytes);
 
-    // ID
-    unconnectedPongData.push_back(static_cast<std::uint8_t>(RakNetPacketType::UNCONNECTED_PONG));
-    
-    // Time
-    const uint8_t *timeUnconnectedPing = packet.data + 1;
-    insert_at_vec_end(timeUnconnectedPing, sizeof(std::uint64_t), unconnectedPongData);
+    add_id(data, RakNetPacketType::UNCONNECTED_PONG);                   // ID
+    insert_at_vec_end(packet.data + 1, sizeof(std::uint64_t), data);    // Time (echoed)
+    insert_at_vec_end(get_int_bytes(_guid), sizeof(_guid), data);       // Server GUID
+    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);        // Magic
+    encode_string(_cachedServerIDString, data);                         // Server ID String
 
-    // Server GUID
-    auto guidBytes = reinterpret_cast<const uint8_t *>(&_guid);
-    insert_at_vec_end(guidBytes, sizeof(_guid), unconnectedPongData);
-
-    // Magic
-    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), unconnectedPongData);
-
-    // Server ID String
-    encode_string(_cachedServerIDString, unconnectedPongData);
-
-    _udpServer->send(unconnectedPongData, packet.addrInfo);
+    _udpServer->send(data, packet.addrInfo);
 
     std::println("Sent UnconnectedPong");
 }
@@ -137,33 +129,23 @@ auto RakNetHandler::handle_unconnected_ping(const UDPPacket &packet) -> void {
 auto RakNetHandler::handle_connection_req_1(const UDPPacket &packet) -> void {
     const size_t packetSizeBytes = 1    // ID 
         + sizeof(RAKNET_MAGIC)          // MAGIC
-        + sizeof(std::uint64_t)         // Server GUID
-        + sizeof(bool)                  // Use security
+        + sizeof(_guid)                 // Server GUID
+        + 1                             // Use security
         + sizeof(std::int32_t)          // Cookie
         + sizeof(std::uint16_t);        // Answer with the MTU 
     
-    std::vector<std::uint8_t> data{};
-    data.reserve(packetSizeBytes);
-
-    data.push_back(static_cast<std::uint8_t>(RakNetPacketType::OPEN_CONNECTION_REP_1));
-
-    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);
-
-    auto guidBytes = reinterpret_cast<const uint8_t *>(&_guid);
-    insert_at_vec_end(guidBytes, sizeof(_guid), data);
-
-    data.push_back(static_cast<std::uint8_t>(false)); // Security is handled by bedrock's protocol
-    
-    const std::int32_t zero = 0;
-    auto zeroIntBytes = reinterpret_cast<const uint8_t *>(&zero);
-    insert_at_vec_end(zeroIntBytes, sizeof(zero), data);
-
     //                                    ID  MAGIC                  PROTOCOL VERSION
     std::uint16_t mtu = packet.dataSize - 1 - sizeof(RAKNET_MAGIC) - 1; // This is the size of the padded zeroes
     mtu += 46; // (see https://minecraft.wiki/w/RakNet#Open_Connection_Request_1 for the +46 explanation)
 
-    auto mtuBytes = reinterpret_cast<const std::uint8_t *>(&mtu);
-    insert_at_vec_end(mtuBytes, sizeof(mtu), data);
+    CREATE_DATA_VECTOR(packetSizeBytes);
+
+    add_id(data, RakNetPacketType::OPEN_CONNECTION_REP_1);                          // ID
+    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);                    // Magic
+    insert_at_vec_end(get_int_bytes(_guid), sizeof(_guid), data);                   // Server GUID
+    data.push_back((std::uint8_t)false);                                            // Security is handled by bedrock's protocol
+    insert_at_vec_end(get_int_bytes((std::int32_t)0), sizeof(std::int32_t), data);  // Cookie (unused)
+    insert_at_vec_end(get_int_bytes(mtu), sizeof(mtu), data);                       // MTU
 
     _udpServer->send(data, packet.addrInfo);
 
@@ -171,13 +153,34 @@ auto RakNetHandler::handle_connection_req_1(const UDPPacket &packet) -> void {
 }
 
 auto RakNetHandler::handle_connection_req_2(const UDPPacket &packet) -> void {
+    const size_t packetSizeBytes = 1
+        + sizeof(RAKNET_MAGIC)  // Magic
+        + sizeof(_guid)         // Server GUID
+        + 7                     // 7 for IPv4; 29 for IPv6
+        + sizeof(std::uint16_t) // MTU
+        + 1;                    // Use security
+    
+    auto mtu = static_cast<std::uint16_t>(MAX_PACKET_SIZE);
+    mtu = host_to_network(mtu);
+
+    CREATE_DATA_VECTOR(packetSizeBytes);
+
+    add_id(data, RakNetPacketType::OPEN_CONNECTION_REP_2);
+    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);                                // Magic
+    insert_at_vec_end(get_int_bytes(_guid), sizeof(_guid), data);                               // Server GUID
+    insert_at_vec_end(ip_to_bytes(packet.addrInfo.ipAddr, packet.addrInfo.port, 0x4), data);    // Client IP
+    insert_at_vec_end(get_int_bytes(mtu), sizeof(mtu), data);                                   // MTU
+    data.push_back((std::uint8_t)false);                                                        // Security is handled by bedrock's protocol
+
+    _udpServer->send(data, packet.addrInfo);
+
+    std::println("Sent ConnectionReply2.");
 }
 
 auto encode_string(const std::string &str, std::vector<std::uint8_t> &bytes) -> void {
     auto strBytes = reinterpret_cast<const uint8_t *>(str.c_str());
     auto strSize = static_cast<std::uint16_t>(str.size());
     strSize = host_to_network(strSize);
-
 
     auto strSizeBytes = reinterpret_cast<const std::uint8_t *>(&strSize);
     bytes.insert(
@@ -199,6 +202,36 @@ auto insert_at_vec_end(const std::vector<std::uint8_t> &src, std::vector<std::ui
 
 auto insert_at_vec_end(const std::uint8_t *src, std::size_t size, std::vector<std::uint8_t> &dest) -> void {
     dest.insert(dest.end(), src, src + size);
+}
+
+auto add_id(std::vector<std::uint8_t> &dest, RakNetPacketType packetType) -> void {
+    dest.push_back(static_cast<std::uint8_t>(packetType));
+}
+
+auto ip_to_bytes(const std::string &ip, std::uint16_t port, std::uint8_t type) -> std::vector<std::uint8_t> {
+    std::int32_t ipNumber = 0;
+    std::string currNumber = "";
+    
+    for (char c : ip) {
+        if (c == '.') {
+            ipNumber += std::stoi(currNumber);
+            continue;
+        }
+
+        currNumber += c;
+    }
+
+    ipNumber = network_to_host(ipNumber);
+    port = network_to_host(port);
+
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(type == 0x4 ? 7 : 29);
+    
+    bytes.push_back(type);
+    insert_at_vec_end(get_int_bytes(ipNumber), sizeof(ipNumber), bytes);
+    insert_at_vec_end(get_int_bytes(port), sizeof(port), bytes);
+
+    return bytes;
 }
 
 } // namespace Firework

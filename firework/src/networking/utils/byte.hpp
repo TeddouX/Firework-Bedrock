@@ -21,5 +21,17 @@ constexpr _Integral host_to_network(const _Integral &value) {
     return network_to_host(value);
 }
 
+template <typename _Integral>
+    requires std::is_integral_v<_Integral>
+constexpr const std::uint8_t *get_int_bytes(const _Integral &value) {
+    return reinterpret_cast<const std::uint8_t *>(std::addressof(value));
+}
+
+template <typename _Integral>
+    requires std::is_integral_v<_Integral>
+constexpr const _Integral &int_from_bytes(const std::uint8_t *value) {
+    return *reinterpret_cast<const _Integral *>(value);
+}
+
 } // namespace Firework
 
