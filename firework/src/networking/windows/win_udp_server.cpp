@@ -3,19 +3,19 @@
 #include <string_view>
 #include <string>
 #include <print>
+#include <WinSock2.h>
+#include <ws2tcpip.h>
 
-#include "WinSock2.h"
-#include "ws2tcpip.h"
+#include "../utils/byte.hpp"
 
-namespace Firework::Internal
+namespace Firework
 {
     
 WinUDPServer::WinUDPServer()
     : _receiveSocket{INVALID_SOCKET}
     , _running{false}
     , _packetsQueue{}
-{
-}
+{}
 
 auto WinUDPServer::create_socket(std::uint32_t port) -> bool {
     ::WSADATA wsadata;
@@ -125,10 +125,10 @@ auto WinUDPServer::receive_thread() -> void {
 
         char clientIP[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &clientAddr.sin_addr, clientIP, INET_ADDRSTRLEN);
-        std::uint16_t port = ntohs(clientAddr.sin_port);
+        std::uint16_t port = network_to_host(clientAddr.sin_port);
 
         AddressInfo info{};
-        info.ipAddr = std::string(clientIP);
+        info.ipAddr = std::string_view(clientIP);
         info.port = port;
 
         UDPPacket packet{};
@@ -143,5 +143,33 @@ auto WinUDPServer::receive_thread() -> void {
     }
 }
 
-} // namespace Firework::Internal
+auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const AddressInfo &addrInfo) -> bool {
+    auto dataPtr = reinterpret_cast<const char *>(data.data());
+    const size_t dataSize = data.size();
 
+    SOCKADDR_IN addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = host_to_network(addrInfo.port);
+    
+    int result = ::inet_pton(AF_INET, addrInfo.ipAddr.data(), &addr.sin_addr);
+    if (result != 1) {
+        std::println("inet_pton failed for ip='{}', result={}", addrInfo.ipAddr, result);
+        return false;
+    }
+
+    result = ::sendto(
+        _receiveSocket,
+        dataPtr, dataSize,
+        0,
+        reinterpret_cast<const PSOCKADDR>(&addr), sizeof(addr)
+    );
+
+    if (result == SOCKET_ERROR) {
+        std::println("sendto failed: {}", ::WSAGetLastError());
+        return false;
+    }
+    
+    return true;
+}
+
+} // namespace Firework

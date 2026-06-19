@@ -2,15 +2,27 @@
 #include <print>
 
 #include "networking/windows/win_udp_server.hpp"
+#include "networking/raknet/raknet_handler.hpp"
 
-using namespace Firework::Internal;
+using namespace Firework;
 
 int main() {
     std::shared_ptr<UDPServer> serv = std::make_shared<WinUDPServer>();
-    if (!serv->create_socket(8080))
+    if (!serv->create_socket(19132))
         return 0;
 
     serv->start();
+
+    ServerProperties serverProperties{};
+    serverProperties.motd1 = "Test Server";
+    serverProperties.playerCount = 69;
+    serverProperties.maxPlayerCount = 420;
+    serverProperties.gameMode = "Survival";
+    serverProperties.gameModeID = 1;
+    serverProperties.portIPv4 = 19132;
+    serverProperties.portIPv6 = 19133;
+
+    RakNetHandler rakNetHandler{serverProperties, serv};
 
     bool running = true;
     while (running) {
@@ -20,6 +32,8 @@ int main() {
             for (int i = 0; i < packet.dataSize; i++)
                 std::print("{:02X} ", packet.data[i]);
             std::print("; size = {}\n", packet.dataSize);
+        
+            rakNetHandler.handle_packet(packet);
         }
     }
 }

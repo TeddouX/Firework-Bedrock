@@ -6,7 +6,7 @@
 
 #include "../udp_server.hpp"
 
-namespace Firework::Internal
+namespace Firework
 {
     
 using Socket = std::uint64_t;
@@ -19,6 +19,7 @@ public:
     auto start() -> void override;
     auto stop() -> void override;
     auto try_pop_packet(UDPPacket &outPacket) -> bool override;
+    auto send(const std::vector<std::uint8_t> &data, const AddressInfo &addrInfo) -> bool override;
 
 protected:
     auto receive_thread() -> void override;
@@ -32,4 +33,4 @@ private:
     std::queue<UDPPacket> _packetsQueue;
 };
 
-} // namespace Firework::Internal
+} // namespace Firework

@@ -2,21 +2,10 @@
 #include <cstdint>
 #include <queue>
 
-namespace Firework::Internal
+#include "udp_packet.hpp"
+
+namespace Firework
 {
-
-constexpr std::size_t MAX_PACKET_SIZE = 2048ULL;
-
-struct AddressInfo {
-    std::uint16_t port;
-    std::string_view ipAddr;
-};
-
-struct UDPPacket {
-    AddressInfo addrInfo;
-    std::uint8_t data[MAX_PACKET_SIZE];
-    size_t dataSize;
-};
 
 class UDPServer {
 public:
@@ -26,10 +15,11 @@ public:
     virtual auto start() -> void = 0;
     virtual auto stop() -> void = 0;
     virtual auto try_pop_packet(UDPPacket &outPacket) -> bool = 0;
+    virtual auto send(const std::vector<std::uint8_t> &data, const AddressInfo &addrInfo) -> bool = 0;
 
 protected:
     virtual auto receive_thread() -> void = 0;
 };
 
-} // namespace Firework::Internal
+} // namespace Firework
 
