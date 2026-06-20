@@ -8,7 +8,7 @@
 namespace Firework
 {
     
-constexpr std::size_t MAX_PACKET_SIZE = 1600ULL;
+constexpr std::size_t MAX_PACKET_SIZE = 1492ULL;
 
 class UDPPacket {
 public:

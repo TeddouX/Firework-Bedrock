@@ -8,12 +8,11 @@
 
 #include "../udp_packet.hpp"
 #include "../udp_server.hpp"
+#include "../utils/uint24.hpp"
 
 namespace Firework::RakNet
 {
     
-using uint24_t = std::uint32_t;
-
 struct ServerProperties {
     std::string_view motd1;
     // Ignored by the client
@@ -32,19 +31,37 @@ struct RakNetConnection {
     AddressInfo address;
 
     // Outgoing side
-    std::uint32_t nextSequenceNumber{0}; // Next sequence number to assign to an outgoing datagram
+    uint24_t nextSequenceNumber{0u}; // Next sequence number to assign to an outgoing datagram
     // sequence# -> raw datagram bytes, for retransmission
     // Raw datagram bytes are cleared at each ACK received by the client
-    std::unordered_map<std::uint32_t, std::vector<std::uint8_t>> sentDatagrams{}; 
+    std::unordered_map<uint24_t, std::vector<std::uint8_t>> sentDatagrams{}; 
     std::chrono::steady_clock::time_point lastSendTime{}; // For retransmition of timing/timeouts
 
-    // Incoming side
-    std::uint32_t expectedSequenceNumber{0};                  // Next sequence number you expect to receive
-    std::set<uint32_t> receivedSequenceNumbers{};             // Track what's arrived (for building ACK ranges)
-    std::set<uint32_t> missingSequenceNumbers{};              // Gaps detected -> need to NACK these
-    std::chrono::steady_clock::time_point lastReceivedTime{}; // Used for detecting timeouts
+    /*
     
+    C seq: 0 -> S -> expectedSequenceNumber: 1
+    S seq: 0 -> C 
+    // Missing seq 1
+    C -> S seq: 2 -> seq != expectedSequenceNumber
+        => missingSequenceNumbers.append(i for i in range(seq - expectedSequenceNumber))
+            & connectionDirty = true;
+        => update_connections() -> NACK(1)
+    C seq 1 -> S
+    
+    If packet is UnreliableSequenced and is received out of order, ignore it
+    If a packet is UnreliableSequenced, and it is NACKed, don't resend it
+
+    */
+
+    // Incoming side
+    uint24_t expectedSequenceNumber{0u};                        // Next sequence number you expect to receive
+    uint24_t lastACKEDsequenceNumber{0u};                       // Used to build ACK ranges, and detect missing packets
+    std::set<uint24_t> missingSequenceNumbers{};                // Gaps detected -> need to NACK these
+    std::chrono::steady_clock::time_point lastReceivedTime{};   // Used for detecting timeouts
+    
+    // Misc
     bool isFullyConnected; // Past handshake, into Game Packet phase
+    bool connectionDirty;  // Needs updating, set to true if datagrams were received
 };
 
 class RakNetServer {
@@ -53,6 +70,7 @@ public:
 
     auto update_server_properties(const ServerProperties &serverProperties) -> void;
     auto handle_packet(const UDPPacket &packet) -> void;
+    auto update_connections() -> void;
 
 private:
     std::uint64_t _guid;

@@ -4,6 +4,8 @@
 #include <vector>
 
 #include "../address.hpp"
+#include "../udp_packet.hpp"
+#include "../utils/uint24.hpp"
 
 namespace Firework::RakNet
 {
@@ -56,6 +58,54 @@ struct ConnectionReply2Packet {
     bool useSecurity;
     
     auto encode() -> std::vector<std::uint8_t>;
+};
+
+// Frame Set
+class FrameSetPacket {
+public:
+    enum class Reliability {
+                                            // Is reliable      Is ordered      Is sequenced
+        Unreliable = 0,                     // False            False           False
+        UnreliableSequenced = 1,            // False            True            True
+        Reliable = 2,                       // True             False           False
+        ReliableOrdered = 3,                // True             True            False
+        ReliableSequenced = 4,              // True             True            True
+        UnreliableWithAckReceipt = 5,       // False            False           False
+        ReliableWithAckReceipt = 6,         // True             False           False
+        ReliableOrderedWithAckReceipt = 7,  // True             True            False
+    };
+
+    struct Frame {
+        Reliability reliability;
+        bool isFragmented;
+        std::uint16_t bufferSize; // In bits
+        
+        // Only if ordered
+        uint24_t reliableFrameIndex{0u};
+        uint24_t sequencedFrameIndex{0u};
+        
+        // Only if isFragmented
+        std::int32_t compoundSize;
+        std::int16_t compoundID;
+        std::int32_t fragmentIdx;
+    };
+
+    static auto from_packet(const UDPPacket &packet) -> FrameSetPacket;
+
+    FrameSetPacket(Reliability reliability, std::vector<const uint8_t *> packets, size_t packetsTotalSize);
+
+    // Returns each packet that needs to be sent in case of splitting if data is too big
+    auto encode() -> std::vector<std::vector<std::uint8_t>>;
+
+private:
+    // Unknown what these are used for, so we will just ignore them
+    // bool        _isPacketPair;
+    // bool        _isContinuousSend;
+    // bool        _needs_B_and_AS;
+    
+    uint24_t    _sequenceNumber;
+
+    std::vector<Frame> _frames;
 };
 
 } // namespace Firework::RakNet

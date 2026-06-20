@@ -79,6 +79,20 @@ auto ConnectionReply2Packet::encode() -> std::vector<std::uint8_t> {
 }
 
 
+auto FrameSetPacket::from_packet(const UDPPacket &packet) -> FrameSetPacket {
+    
+}
+
+FrameSetPacket::FrameSetPacket(Reliability reliability, std::vector<const uint8_t *> packets, size_t packetsTotalSize) {
+
+}
+
+// Returns each packet that needs to be sent in case of splitting if data is too big
+auto FrameSetPacket::encode() -> std::vector<std::vector<std::uint8_t>> {
+
+}
+
+
 
 auto encode_string(const std::string &str, std::vector<std::uint8_t> &bytes) -> void {
     auto strBytes = reinterpret_cast<const uint8_t *>(str.c_str());

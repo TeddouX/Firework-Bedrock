@@ -149,7 +149,11 @@ auto RakNetServer::handle_connection_req_2(const UDPPacket &packet) -> void {
 }
 
 auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t> {
-    return {};
+
+}
+
+auto RakNetServer::update_connections() -> void {
+    // Send ACKs and NACKs
 }
 
 } // namespace Firework::RakNet

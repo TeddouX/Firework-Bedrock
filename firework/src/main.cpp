@@ -35,5 +35,7 @@ int main() {
         
             rakNetServer.handle_packet(packet);
         }
+
+        rakNetServer.update_connections();
     }
 }
