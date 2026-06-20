@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "../udp_packet.hpp"
+#include "../address.hpp"
 
 namespace Firework::RakNet
 {

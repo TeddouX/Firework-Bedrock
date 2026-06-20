@@ -28,10 +28,10 @@ int main() {
     while (running) {
         UDPPacket packet;
         while (serv->try_pop_packet(packet)) {
-            std::print("Received from {}:{} -> ", packet.addrInfo.ipAddr, packet.addrInfo.port);
-            for (int i = 0; i < packet.dataSize; i++)
-                std::print("{:02X} ", packet.data[i]);
-            std::print("; size = {}\n", packet.dataSize);
+            std::print("Received from {} -> ", packet.addrInfo().to_string());
+            for (int i = 0; i < packet.dataSize(); i++)
+                std::print("{:02X} ", packet.data()[i]);
+            std::print("; size = {}\n", packet.dataSize());
         
             rakNetServer.handle_packet(packet);
         }

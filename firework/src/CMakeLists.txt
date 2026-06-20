@@ -7,10 +7,12 @@ set(FIREWORK_SOURCES
     # -------------------
     #      Headers
     # -------------------
-    "networking/raknet/raknet_handler.hpp"
     "networking/raknet/raknet_packets.hpp"
+    "networking/raknet/raknet_server.hpp"
     "networking/utils/byte.hpp"
+    "networking/utils/ip.hpp"
     "networking/windows/win_udp_server.hpp"
+    "networking/address.hpp"
     "networking/udp_packet.hpp"
     "networking/udp_server.hpp"
     "firework.hpp"
@@ -18,8 +20,9 @@ set(FIREWORK_SOURCES
     # -------------------
     #    Source files
     # -------------------
-    "networking/raknet/raknet_handler.cpp"
     "networking/raknet/raknet_packets.cpp"
+    "networking/raknet/raknet_server.cpp"
+    "networking/utils/ip.cpp"
     "networking/windows/win_udp_server.cpp"
     "main.cpp"
 )

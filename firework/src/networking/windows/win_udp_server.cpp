@@ -5,12 +5,15 @@
 #include <print>
 #include <WinSock2.h>
 #include <ws2tcpip.h>
+#include <optional>
 
 #include "../utils/byte.hpp"
 
 namespace Firework
 {
-    
+
+constexpr const std::uint8_t LOCAL_IP_BYTES[] = {127, 0, 0, 1};
+
 WinUDPServer::WinUDPServer()
     : _receiveSocket{INVALID_SOCKET}
     , _running{false}
@@ -32,30 +35,26 @@ auto WinUDPServer::create_socket(std::uint32_t port) -> bool {
     hints.ai_family = AF_INET;          // IPv4
     hints.ai_socktype = SOCK_DGRAM;     // Socket type that supports UDP
     hints.ai_protocol = ::IPPROTO_UDP;
+    hints.ai_flags = AI_PASSIVE;
 
-    constexpr std::string_view host = "127.0.0.1";
-    result = ::getaddrinfo(host.data(), portStr.c_str(), &hints, &resultAddrInfo);
+    // constexpr std::string_view host = "192.168.1.13";
+    result = ::getaddrinfo(nullptr, portStr.c_str(), &hints, &resultAddrInfo);
     if (result != 0) {
         std::println("getaddrinfo failed with code {}", result);
         ::WSACleanup();
         return false;
     }
 
-    ::SOCKET listenSocket = ::socket(
-        resultAddrInfo->ai_family, 
-        resultAddrInfo->ai_socktype, 
-        resultAddrInfo->ai_protocol
-    );
-
+    ::SOCKET listenSocket = ::socket(AF_INET, SOCK_DGRAM, ::IPPROTO_UDP);
     if (listenSocket == INVALID_SOCKET) {
         std::println("Error at socket(): {}", ::WSAGetLastError());
         
-        // ::freeaddrinfo(resultAddrInfo);
+        ::freeaddrinfo(resultAddrInfo);
         ::WSACleanup();
 
         return false;
     }
-
+    
     _receiveSocket = listenSocket;
 
     result = ::bind(
@@ -114,7 +113,7 @@ auto WinUDPServer::receive_thread() -> void {
             _receiveSocket, 
             recvBuf, sizeof(recvBuf), 
             0,
-            reinterpret_cast<PSOCKADDR>(&clientAddr), &clientAddrLen
+            reinterpret_cast<::PSOCKADDR>(&clientAddr), &clientAddrLen
         );
         
         if (recvSize == SOCKET_ERROR) {
@@ -123,18 +122,21 @@ auto WinUDPServer::receive_thread() -> void {
             continue;
         }
 
+        ::PIN_ADDR addrData = &clientAddr.sin_addr;
+        // Ignore localhost requests
+        if (std::memcmp(addrData, LOCAL_IP_BYTES, 4) == 0)
+            continue;
+
         char clientIP[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &clientAddr.sin_addr, clientIP, INET_ADDRSTRLEN);
+        ::inet_ntop(AF_INET, addrData, clientIP, sizeof(clientIP));
         std::uint16_t port = network_to_host(clientAddr.sin_port);
 
-        AddressInfo info{};
-        info.ipAddr = std::string_view(clientIP);
-        info.port = port;
-
-        UDPPacket packet{};
-        packet.addrInfo = info;
-        std::memcpy(packet.data, recvBuf, recvSize);
-        packet.dataSize = recvSize;
+        AddressInfo info{std::string(clientIP), port, AddressFamily::IPv4};
+        UDPPacket packet{
+            info, 
+            reinterpret_cast<const std::uint8_t *>(recvBuf), 
+            static_cast<std::size_t>(recvSize)
+        };
 
         {
             std::lock_guard<std::mutex> guard(_packetsMutex);
@@ -149,11 +151,11 @@ auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const AddressInfo
 
     SOCKADDR_IN addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = host_to_network(addrInfo.port);
+    addr.sin_port = host_to_network(addrInfo.port());
     
-    int result = ::inet_pton(AF_INET, addrInfo.ipAddr.data(), &addr.sin_addr);
+    int result = ::inet_pton(AF_INET, addrInfo.ipAddr().data(), &addr.sin_addr);
     if (result != 1) {
-        std::println("inet_pton failed for ip='{}', result={}", addrInfo.ipAddr, result);
+        std::println("inet_pton failed for ip='{}', result={}", addrInfo.ipAddr(), result);
         return false;
     }
 

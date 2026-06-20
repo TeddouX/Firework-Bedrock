@@ -57,10 +57,10 @@ auto RakNetServer::update_server_properties(const ServerProperties &serverProper
 }
 
 auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
-    if (packet.dataSize < 1)
+    if (packet.dataSize() < 1)
         return;
 
-    uint8_t id = packet.data[0];
+    uint8_t id = packet.data()[0];
     auto packetType = static_cast<RakNetPacketType>(id);
 
     std::println("Packet id 0x{:02X}", id);
@@ -94,17 +94,17 @@ auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
 }
 
 auto RakNetServer::handle_unconnected_ping(const UDPPacket &packet) -> void {
-    if (packet.dataSize < 1 + sizeof(std::uint64_t)) {
+    if (packet.dataSize() < 1 + sizeof(std::uint64_t)) {
         std::println("Unconnected Ping packet too small");
         return;
     }
 
     UnconnectedPongPacket replyPacket{};
-    replyPacket.echoedTime = int_from_bytes<std::uint64_t>(packet.data + 1);
+    replyPacket.echoedTime = int_from_bytes<std::uint64_t>(packet.data() + 1);
     replyPacket.serverGUID = _guid;
     replyPacket.serverIdString = _cachedServerIDString;
 
-    _udpServer->send(replyPacket.encode(), packet.addrInfo);
+    _udpServer->send(replyPacket.encode(), packet.addrInfo());
 
     std::println("Sent UnconnectedPong");
 }
@@ -116,18 +116,18 @@ auto RakNetServer::handle_connection_req_1(const UDPPacket &packet) -> void {
     replyPacket.securityCookie = 0;
     
     //                                            ID  MAGIC                  PROTOCOL VERSION
-    std::uint16_t paddingSize = packet.dataSize - 1 - sizeof(RAKNET_MAGIC) - 1; // This is the size of the padded zeroes
+    std::uint16_t paddingSize = packet.dataSize() - 1 - sizeof(RAKNET_MAGIC) - 1; // This is the size of the padded zeroes
     std::uint16_t mtu = paddingSize + 46; // (see https://minecraft.wiki/w/RakNet#Open_Connection_Request_1 for the +46 explanation)
     replyPacket.MTU = mtu;
 
 
-    if (_udpServer->send(replyPacket.encode(), packet.addrInfo)) {
+    if (_udpServer->send(replyPacket.encode(), packet.addrInfo())) {
         // On successful reply, add a new connection
         RakNetConnection connection{};
-        connection.address = packet.addrInfo;
+        connection.address = packet.addrInfo();
         connection.isFullyConnected = false;
 
-        _openConnections.emplace(packet.addrInfo.to_string(), connection);
+        _openConnections.emplace(packet.addrInfo().to_string(), connection);
 
         std::println("Sent ConnectionReply1.");
     }
@@ -136,14 +136,14 @@ auto RakNetServer::handle_connection_req_1(const UDPPacket &packet) -> void {
 auto RakNetServer::handle_connection_req_2(const UDPPacket &packet) -> void {
     ConnectionReply2Packet replyPacket{};
     replyPacket.serverGUID = _guid;
-    replyPacket.clientAddress = packet.addrInfo;
+    replyPacket.clientAddress = packet.addrInfo();
     replyPacket.useSecurity = false;
     
     auto mtu = static_cast<std::uint16_t>(MAX_PACKET_SIZE);
     mtu = host_to_network(mtu);
     replyPacket.MTU = mtu;
 
-    _udpServer->send(replyPacket.encode(), packet.addrInfo);
+    _udpServer->send(replyPacket.encode(), packet.addrInfo());
 
     std::println("Sent ConnectionReply2.");
 }

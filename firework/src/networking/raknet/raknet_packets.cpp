@@ -1,6 +1,9 @@
 #include "raknet_packets.hpp"
 
 #include "../utils/byte.hpp"
+#include "../utils/ip.hpp"
+
+#include <print>
 
 namespace Firework::RakNet
 {
@@ -9,7 +12,7 @@ auto encode_string(const std::string &str, std::vector<std::uint8_t> &bytes) -> 
 auto insert_at_vec_end(const std::vector<std::uint8_t> &src, std::vector<std::uint8_t> &dest) -> void;
 auto insert_at_vec_end(const std::uint8_t *src, std::size_t size, std::vector<std::uint8_t> &dest) -> void;
 auto add_id(std::vector<std::uint8_t> &dest, RakNetPacketType packetType) -> void;
-auto ip_to_bytes(const std::string &ip, std::uint16_t port, std::uint8_t type) -> std::vector<std::uint8_t>;
+auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t>;
 
 #define CREATE_DATA_VECTOR(size) std::vector<std::uint8_t> data{}; data.reserve(size)
 
@@ -55,20 +58,21 @@ auto ConnectionReply1Packet::encode() -> std::vector<std::uint8_t> {
 }
 
 auto ConnectionReply2Packet::encode() -> std::vector<std::uint8_t> {
+    const size_t addressSize = clientAddress.family() == AddressFamily::IPv4 ? 7 : 29;
     const size_t packetSizeBytes = 1
         + sizeof(RAKNET_MAGIC)  // Magic
         + sizeof(serverGUID)    // Server GUID
-        + 7                     // 7 for IPv4; 29 for IPv6
+        + addressSize           // 7 for IPv4; 29 for IPv6
         + sizeof(MTU)           // MTU
         + sizeof(useSecurity);  // Use security
 
     CREATE_DATA_VECTOR(packetSizeBytes);
 
     add_id(data, RakNetPacketType::OPEN_CONNECTION_REP_2);
-    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);                                // Magic
-    insert_at_vec_end(get_int_bytes(serverGUID), sizeof(serverGUID), data);                               // Server GUID
-    insert_at_vec_end(ip_to_bytes(clientAddress.ipAddr, clientAddress.port, 0x4), data);    // Client IP
-    insert_at_vec_end(get_int_bytes(MTU), sizeof(MTU), data);                                   // MTU
+    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);            // Magic
+    insert_at_vec_end(get_int_bytes(serverGUID), sizeof(serverGUID), data); // Server GUID
+    insert_at_vec_end(ip_to_bytes(clientAddress), data);                    // Client IP
+    insert_at_vec_end(get_int_bytes(MTU), sizeof(MTU), data);               // MTU
     data.push_back(static_cast<std::uint8_t>(useSecurity));
 
     return data;
@@ -107,28 +111,48 @@ auto add_id(std::vector<std::uint8_t> &dest, RakNetPacketType packetType) -> voi
     dest.push_back(static_cast<std::uint8_t>(packetType));
 }
 
-auto ip_to_bytes(const std::string &ip, std::uint16_t port, std::uint8_t type) -> std::vector<std::uint8_t> {
-    std::int32_t ipNumber = 0;
-    std::string currNumber = "";
-    
-    for (char c : ip) {
-        if (c == '.') {
-            ipNumber += std::stoi(currNumber);
-            continue;
-        }
+auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
+    std::uint16_t port = addrInfo.port();
+    const std::string &ipStr = addrInfo.ipAddr();
+    AddressFamily family = addrInfo.family();
+    bool IPv6 = family == AddressFamily::IPv6; 
 
-        currNumber += c;
+    std::vector<std::uint8_t> ipBytes;
+    ipBytes.reserve(IPv6 ? 16 : 4);
+    if (IPv6) {
+        std::array<std::uint8_t, 16> bytes = IPv6_string_to_bytes(ipStr); 
+        ipBytes.insert(ipBytes.begin(), bytes.begin(), bytes.end());
+    }
+    else {
+        std::array<std::uint8_t, 4> bytes = IPv4_string_to_bytes(ipStr); 
+        ipBytes.insert(ipBytes.begin(), bytes.begin(), bytes.end());
     }
 
-    ipNumber = network_to_host(ipNumber);
     port = network_to_host(port);
 
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(type == 0x4 ? 7 : 29);
+    bytes.reserve(IPv6 ? 29 : 7);
     
-    bytes.push_back(type);
-    insert_at_vec_end(get_int_bytes(ipNumber), sizeof(ipNumber), bytes);
-    insert_at_vec_end(get_int_bytes(port), sizeof(port), bytes);
+    bytes.push_back(static_cast<std::uint8_t>(family));
+
+    if (IPv6) {
+        // Address family
+        insert_at_vec_end(get_int_bytes<std::uint16_t>(23), sizeof(std::uint16_t), bytes);
+        // Port
+        insert_at_vec_end(get_int_bytes(port), sizeof(port), bytes);
+        // Flow 
+        insert_at_vec_end(get_int_bytes<std::uint32_t>(0), sizeof(std::uint32_t), bytes); 
+    } 
+
+    // IP bytes
+    insert_at_vec_end(ipBytes, bytes);
+
+    if (IPv6)
+        // Scope ID 
+        insert_at_vec_end(get_int_bytes<std::uint32_t>(0), sizeof(std::uint32_t), bytes); 
+    else
+        // Port
+        insert_at_vec_end(get_int_bytes(port), sizeof(port), bytes);
 
     return bytes;
 }
