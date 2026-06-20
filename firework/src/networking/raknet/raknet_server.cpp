@@ -1,4 +1,4 @@
-#include "raknet_handler.hpp"
+#include "raknet_server.hpp"
 
 #include <sstream>
 #include <print>
@@ -11,7 +11,7 @@
 namespace Firework::RakNet
 {
     
-RakNetHandler::RakNetHandler(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer) 
+RakNetServer::RakNetServer(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer) 
     : _guid{0}
     , _serverProperties{serverProperties}
     , _cachedServerIDString{}
@@ -25,7 +25,7 @@ RakNetHandler::RakNetHandler(const ServerProperties &serverProperties, std::shar
     properties_to_string();
 }
 
-auto RakNetHandler::properties_to_string() -> const std::string & {
+auto RakNetServer::properties_to_string() -> const std::string & {
     // Edition (MCPE or MCEE for Education Edition);MOTD line 1;Protocol Version;Version Name;Player Count;Max Player Count;Server Unique ID;MOTD line 2;Game mode;Game mode (numeric);Port (IPv4);Port (IPv6);
     if (!_serverIDStringDirty)
         return _cachedServerIDString;
@@ -51,12 +51,12 @@ auto RakNetHandler::properties_to_string() -> const std::string & {
     return _cachedServerIDString;
 }
 
-auto RakNetHandler::update_server_properties(const ServerProperties &serverProperties) -> void {
+auto RakNetServer::update_server_properties(const ServerProperties &serverProperties) -> void {
     _serverProperties = serverProperties;
     _serverIDStringDirty = true;
 }
 
-auto RakNetHandler::handle_packet(const UDPPacket &packet) -> void {
+auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
     if (packet.dataSize < 1)
         return;
 
@@ -93,7 +93,12 @@ auto RakNetHandler::handle_packet(const UDPPacket &packet) -> void {
     std::println("Unhandled packet: '{}'", id);
 }
 
-auto RakNetHandler::handle_unconnected_ping(const UDPPacket &packet) -> void {
+auto RakNetServer::handle_unconnected_ping(const UDPPacket &packet) -> void {
+    if (packet.dataSize < 1 + sizeof(std::uint64_t)) {
+        std::println("Unconnected Ping packet too small");
+        return;
+    }
+
     UnconnectedPongPacket replyPacket{};
     replyPacket.echoedTime = int_from_bytes<std::uint64_t>(packet.data + 1);
     replyPacket.serverGUID = _guid;
@@ -104,7 +109,7 @@ auto RakNetHandler::handle_unconnected_ping(const UDPPacket &packet) -> void {
     std::println("Sent UnconnectedPong");
 }
 
-auto RakNetHandler::handle_connection_req_1(const UDPPacket &packet) -> void {  
+auto RakNetServer::handle_connection_req_1(const UDPPacket &packet) -> void {  
     ConnectionReply1Packet replyPacket{};
     replyPacket.serverGUID = _guid;
     replyPacket.useSecurity = false;
@@ -128,7 +133,7 @@ auto RakNetHandler::handle_connection_req_1(const UDPPacket &packet) -> void {
     }
 }
 
-auto RakNetHandler::handle_connection_req_2(const UDPPacket &packet) -> void {
+auto RakNetServer::handle_connection_req_2(const UDPPacket &packet) -> void {
     ConnectionReply2Packet replyPacket{};
     replyPacket.serverGUID = _guid;
     replyPacket.clientAddress = packet.addrInfo;
@@ -143,7 +148,7 @@ auto RakNetHandler::handle_connection_req_2(const UDPPacket &packet) -> void {
     std::println("Sent ConnectionReply2.");
 }
 
-auto RakNetHandler::decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t> {
+auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t> {
     return {};
 }
 

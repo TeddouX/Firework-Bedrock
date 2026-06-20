@@ -47,9 +47,9 @@ struct RakNetConnection {
     bool isFullyConnected; // Past handshake, into Game Packet phase
 };
 
-class RakNetHandler {
+class RakNetServer {
 public:
-    RakNetHandler(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer);
+    RakNetServer(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer);
 
     auto update_server_properties(const ServerProperties &serverProperties) -> void;
     auto handle_packet(const UDPPacket &packet) -> void;

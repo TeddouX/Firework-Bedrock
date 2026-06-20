@@ -2,7 +2,7 @@
 #include <print>
 
 #include "networking/windows/win_udp_server.hpp"
-#include "networking/raknet/raknet_handler.hpp"
+#include "networking/raknet/raknet_server.hpp"
 
 using namespace Firework;
 
@@ -22,7 +22,7 @@ int main() {
     serverProperties.portIPv4 = 19132;
     serverProperties.portIPv6 = 19133;
 
-    RakNet::RakNetHandler rakNetHandler{serverProperties, serv};
+    RakNet::RakNetServer rakNetServer{serverProperties, serv};
 
     bool running = true;
     while (running) {
@@ -33,7 +33,7 @@ int main() {
                 std::print("{:02X} ", packet.data[i]);
             std::print("; size = {}\n", packet.dataSize);
         
-            rakNetHandler.handle_packet(packet);
+            rakNetServer.handle_packet(packet);
         }
     }
 }
