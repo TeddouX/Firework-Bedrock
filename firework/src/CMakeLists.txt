@@ -8,6 +8,7 @@ set(FIREWORK_SOURCES
     #      Headers
     # -------------------
     "networking/raknet/raknet_handler.hpp"
+    "networking/raknet/raknet_packets.hpp"
     "networking/utils/byte.hpp"
     "networking/windows/win_udp_server.hpp"
     "networking/udp_packet.hpp"
@@ -18,6 +19,7 @@ set(FIREWORK_SOURCES
     #    Source files
     # -------------------
     "networking/raknet/raknet_handler.cpp"
+    "networking/raknet/raknet_packets.cpp"
     "networking/windows/win_udp_server.cpp"
     "main.cpp"
 )

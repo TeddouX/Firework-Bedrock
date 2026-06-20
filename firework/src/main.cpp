@@ -13,7 +13,7 @@ int main() {
 
     serv->start();
 
-    ServerProperties serverProperties{};
+    RakNet::ServerProperties serverProperties{};
     serverProperties.motd1 = "Test Server";
     serverProperties.playerCount = 69;
     serverProperties.maxPlayerCount = 420;
@@ -22,7 +22,7 @@ int main() {
     serverProperties.portIPv4 = 19132;
     serverProperties.portIPv6 = 19133;
 
-    RakNetHandler rakNetHandler{serverProperties, serv};
+    RakNet::RakNetHandler rakNetHandler{serverProperties, serv};
 
     bool running = true;
     while (running) {

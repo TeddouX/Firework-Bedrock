@@ -2,36 +2,17 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <chrono>
+#include <set>
+#include <unordered_map>
 
 #include "../udp_packet.hpp"
 #include "../udp_server.hpp"
 
-namespace Firework
+namespace Firework::RakNet
 {
     
-constexpr std::uint8_t RAKNET_MAGIC[] = { 0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 
-                                          0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78 };
-
-enum class RakNetPacketType : std::uint8_t {
-    UNCONNECTED_PING_1          = 0x01,
-    UNCONNECTED_PING_2          = 0x02,
-    UNCONNECTED_PONG            = 0x1c,
-    CONNECTED_PING              = 0x00,
-    CONNECTED_PONG              = 0x03,
-    OPEN_CONNECTION_REQ_1       = 0x05,
-    OPEN_CONNECTION_REP_1       = 0x06,
-    OPEN_CONNECTION_REQ_2       = 0x07,
-    OPEN_CONNECTION_REP_2       = 0x08,
-    CONNECTION_REQUEST          = 0x09,
-    CONNECTION_REQUEST_ACCEPTED = 0x10,
-    NEW_INCOMING_CONNECTION     = 0x13,
-    DISCONNECT                  = 0x15,
-    INCOMPATIBLE_PROTOCOL       = 0x19,
-
-    FRAME_SET                   = 0x80,
-    ACK                         = 0xC0,
-    NACK                        = 0xA0,
-};
+using uint24_t = std::uint32_t;
 
 struct ServerProperties {
     std::string_view motd1;
@@ -45,6 +26,25 @@ struct ServerProperties {
     std::uint16_t gameModeID{};
     std::uint16_t portIPv4;
     std::uint16_t portIPv6;
+};
+
+struct RakNetConnection {
+    AddressInfo address;
+
+    // Outgoing side
+    std::uint32_t nextSequenceNumber{0}; // Next sequence number to assign to an outgoing datagram
+    // sequence# -> raw datagram bytes, for retransmission
+    // Raw datagram bytes are cleared at each ACK received by the client
+    std::unordered_map<std::uint32_t, std::vector<std::uint8_t>> sentDatagrams{}; 
+    std::chrono::steady_clock::time_point lastSendTime{}; // For retransmition of timing/timeouts
+
+    // Incoming side
+    std::uint32_t expectedSequenceNumber{0};                  // Next sequence number you expect to receive
+    std::set<uint32_t> receivedSequenceNumbers{};             // Track what's arrived (for building ACK ranges)
+    std::set<uint32_t> missingSequenceNumbers{};              // Gaps detected -> need to NACK these
+    std::chrono::steady_clock::time_point lastReceivedTime{}; // Used for detecting timeouts
+    
+    bool isFullyConnected; // Past handshake, into Game Packet phase
 };
 
 class RakNetHandler {
@@ -62,12 +62,15 @@ private:
     bool                _serverIDStringDirty;
 
     std::shared_ptr<UDPServer> _udpServer;
+    // ip:port -> connection, these are the connections that have sent a Connection Request 1 packet
+    std::unordered_map<std::string, RakNetConnection> _openConnections;
 
     auto properties_to_string() -> const std::string &;
 
     auto handle_unconnected_ping(const UDPPacket &packet) -> void;
     auto handle_connection_req_1(const UDPPacket &packet) -> void;
     auto handle_connection_req_2(const UDPPacket &packet) -> void;
+    auto decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t>;
 };
 
-} // namespace Firework
+} // namespace Firework::RakNet
