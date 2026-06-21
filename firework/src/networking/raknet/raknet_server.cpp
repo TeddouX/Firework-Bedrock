@@ -8,7 +8,7 @@
 #include "../utils/byte.hpp"
 #include "raknet_packets.hpp"
 
-namespace Firework::RakNet
+namespace Firework::Networking
 {
     
 RakNetServer::RakNetServer(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer) 
@@ -63,7 +63,7 @@ auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
     uint8_t id = packet.data()[0];
     auto packetType = static_cast<RakNetPacketType>(id);
 
-    std::println("Packet id 0x{:02X}", id);
+    LOGGER.debug("Packet id 0x{:02X}", id);
 
     switch (packetType)
     {
@@ -83,7 +83,7 @@ auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
     }
 
     if (id & static_cast<uint8_t>(RakNetPacketType::FRAME_SET) && id < 0x90) {
-        std::println("Received frame set packet");
+        LOGGER.debug("Received frame set packet");
 
         std::vector<uint8_t> frameSet = decode_frame_set(packet);
 
@@ -92,12 +92,12 @@ auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
         return;
     }
 
-    std::println("Unhandled packet: '{}'", id);
+    LOGGER.warn("Unhandled packet: '{}'", id);
 }
 
 auto RakNetServer::handle_unconnected_ping(const UDPPacket &packet) -> void {
     if (packet.dataSize() < 1 + sizeof(std::uint64_t)) {
-        std::println("Unconnected Ping packet too small");
+        LOGGER.warn("Unconnected Ping packet too small from address {}", packet.addrInfo().to_string());
         return;
     }
 
@@ -108,7 +108,7 @@ auto RakNetServer::handle_unconnected_ping(const UDPPacket &packet) -> void {
 
     _udpServer->send(replyPacket.encode(), packet.addrInfo());
 
-    std::println("Sent UnconnectedPong");
+    LOGGER.debug("Sent UnconnectedPong");
 }
 
 auto RakNetServer::handle_connection_req_1(const UDPPacket &packet) -> void {  
@@ -131,7 +131,7 @@ auto RakNetServer::handle_connection_req_1(const UDPPacket &packet) -> void {
 
         _openConnections.emplace(packet.addrInfo().to_string(), connection);
 
-        std::println("Sent ConnectionReply1.");
+        LOGGER.debug("Sent ConnectionReply1.");
     }
 }
 
@@ -147,19 +147,18 @@ auto RakNetServer::handle_connection_req_2(const UDPPacket &packet) -> void {
 
     _udpServer->send(replyPacket.encode(), packet.addrInfo());
 
-    std::println("Sent ConnectionReply2.");
+    LOGGER.debug("Sent ConnectionReply2.");
 }
 
 auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t> {
     auto frameSetPacket = FrameSetPacket::from_packet(packet);
 
     if (!frameSetPacket) {
-        std::println("Failed to decode frame set packet");
+        LOGGER.debug("Failed to decode frame set packet");
         return {};
     }
-
     for (FrameSetPacket::Frame frame : frameSetPacket->frames()) {
-        std::print("Frame Set Packet payload: ");
+        LOGGER.debug("Frame set packet payload: ");
         for (std::uint8_t byte : frame.payload)
             std::print("{:02X} ", byte);
         std::print("\n");
@@ -172,4 +171,4 @@ auto RakNetServer::update_connections() -> void {
     // Send ACKs and NACKs
 }
 
-} // namespace Firework::RakNet
+} // namespace Firework::Networking

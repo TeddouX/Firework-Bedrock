@@ -6,14 +6,16 @@
 
 using namespace Firework;
 
+inline static Firework::Logger LOGGER{"Firework", "Main"};
+
 int main() {
-    std::shared_ptr<UDPServer> serv = std::make_shared<WinUDPServer>();
+    std::shared_ptr<Networking::UDPServer> serv = std::make_shared<Networking::WinUDPServer>();
     if (!serv->create_socket(19132))
         return 0;
-
+    
     serv->start();
 
-    RakNet::ServerProperties serverProperties{};
+    Networking::ServerProperties serverProperties{};
     serverProperties.motd1 = "Test Server";
     serverProperties.playerCount = 69;
     serverProperties.maxPlayerCount = 420;
@@ -22,13 +24,13 @@ int main() {
     serverProperties.portIPv4 = 19132;
     serverProperties.portIPv6 = 19133;
 
-    RakNet::RakNetServer rakNetServer{serverProperties, serv};
+    Networking::RakNetServer rakNetServer{serverProperties, serv};
 
     bool running = true;
     while (running) {
-        UDPPacket packet;
+        Networking::UDPPacket packet;
         while (serv->try_pop_packet(packet)) {
-            std::print("Received from {} -> ", packet.addrInfo().to_string());
+            LOGGER.info("Received from {} -> ", packet.addrInfo().to_string());
             for (int i = 0; i < packet.dataSize(); i++)
                 std::print("{:02X} ", packet.data()[i]);
             std::print("; size = {}\n", packet.dataSize());

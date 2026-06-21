@@ -8,8 +8,9 @@
 #include <optional>
 
 #include "../utils/byte.hpp"
+#include "../../core/logger.hpp"
 
-namespace Firework
+namespace Firework::Networking
 {
 
 constexpr const std::uint8_t LOCAL_IP_BYTES[] = {127, 0, 0, 1};
@@ -24,7 +25,7 @@ auto WinUDPServer::create_socket(std::uint32_t port) -> bool {
     ::WSADATA wsadata;
     int result = ::WSAStartup(MAKEWORD(2, 2), &wsadata);
     if (result != 0) {
-        std::println("WSAStartup failed with error: {}", result);
+        LOGGER.critical("WSAStartup failed with error: {}", result);
         return false;
     }
  
@@ -40,14 +41,14 @@ auto WinUDPServer::create_socket(std::uint32_t port) -> bool {
     // constexpr std::string_view host = "192.168.1.13";
     result = ::getaddrinfo(nullptr, portStr.c_str(), &hints, &resultAddrInfo);
     if (result != 0) {
-        std::println("getaddrinfo failed with code {}", result);
+        LOGGER.critical("getaddrinfo failed with code {}", result);
         ::WSACleanup();
         return false;
     }
 
     ::SOCKET listenSocket = ::socket(AF_INET, SOCK_DGRAM, ::IPPROTO_UDP);
     if (listenSocket == INVALID_SOCKET) {
-        std::println("Error at socket(): {}", ::WSAGetLastError());
+        LOGGER.critical("Error at socket(): {}", ::WSAGetLastError());
         
         ::freeaddrinfo(resultAddrInfo);
         ::WSACleanup();
@@ -64,7 +65,7 @@ auto WinUDPServer::create_socket(std::uint32_t port) -> bool {
     );
 
     if (result == SOCKET_ERROR) {
-        std::println("Bind failed: {}", ::WSAGetLastError());
+        LOGGER.critical("Bind failed: {}", ::WSAGetLastError());
     
         ::freeaddrinfo(resultAddrInfo);
         ::closesocket(_receiveSocket);
@@ -117,7 +118,7 @@ auto WinUDPServer::receive_thread() -> void {
         );
         
         if (recvSize == SOCKET_ERROR) {
-            std::println("recv error: {}", ::WSAGetLastError());
+            LOGGER.error("recv error: {}", ::WSAGetLastError());
             if (!_running.load()) break;
             continue;
         }
@@ -155,7 +156,7 @@ auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const AddressInfo
     
     int result = ::inet_pton(AF_INET, addrInfo.ipAddr().data(), &addr.sin_addr);
     if (result != 1) {
-        std::println("inet_pton failed for ip='{}', result={}", addrInfo.ipAddr(), result);
+        LOGGER.error("inet_pton failed for ip='{}', result={}", addrInfo.ipAddr(), result);
         return false;
     }
 
@@ -167,11 +168,11 @@ auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const AddressInfo
     );
 
     if (result == SOCKET_ERROR) {
-        std::println("sendto failed: {}", ::WSAGetLastError());
+        LOGGER.error("sendto failed: {}", ::WSAGetLastError());
         return false;
     }
     
     return true;
 }
 
-} // namespace Firework
+} // namespace Firework::Networking

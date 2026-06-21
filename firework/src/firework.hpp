@@ -10,3 +10,7 @@
     #error "Linux not implemented at this time"
     #define FIREWORK_LINUX
 #endif
+
+#ifdef NDEBUG
+    #define FIREWORK_RELEASE
+#endif

@@ -4,7 +4,7 @@
 
 #include "udp_packet.hpp"
 
-namespace Firework
+namespace Firework::Networking
 {
 
 class UDPServer {
@@ -21,5 +21,5 @@ protected:
     virtual auto receive_thread() -> void = 0;
 };
 
-} // namespace Firework
+} // namespace Firework::Networking
 

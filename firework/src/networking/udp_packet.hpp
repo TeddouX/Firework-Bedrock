@@ -4,12 +4,11 @@
 #include <string_view>
 
 #include "address.hpp"
+#include "networking.hpp"
 
-namespace Firework
+namespace Firework::Networking
 {
     
-constexpr std::size_t MAX_PACKET_SIZE = 1492ULL;
-
 class UDPPacket {
 public:
     constexpr UDPPacket()
@@ -36,4 +35,4 @@ private:
     std::size_t     _dataSize;
 };
 
-} // namespace Firework
+} // namespace Firework::Networking

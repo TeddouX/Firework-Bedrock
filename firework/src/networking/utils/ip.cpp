@@ -2,6 +2,7 @@
 
 #include "byte.hpp"
 #include "../../firework.hpp"
+#include "../networking.hpp"
 
 #ifdef FIREWORK_WINDOWS
     #include <ws2tcpip.h>
@@ -9,23 +10,21 @@
     #error "Linux not implemented at this time"
 #endif
 
-namespace Firework
+namespace Firework::Networking
 {
  
 auto IPv4_string_to_bytes(const std::string &ipv4Addr) -> std::array<std::uint8_t, 4> {
 #ifdef FIREWORK_WINDOWS
     std::array<std::uint8_t, 4> bytes{};
-    
-    // TODO: log errors
 
     int result = ::inet_pton(AF_INET, ipv4Addr.c_str(), bytes.data()) == SOCKET_ERROR;
     if (result == SOCKET_ERROR) {
-        // Other error
+        LOGGER.error("Error encountered while trying to decode IPv4 address: {}", ::WSAGetLastError());
         return {};
     }
 
     if (result == 0) {
-        // Invalid format
+        LOGGER.error("Invalid format for IPv4 address: {}", ipv4Addr);
         return {};
     }
     
@@ -39,16 +38,14 @@ auto IPv6_string_to_bytes(const std::string &ipv6Addr) -> std::array<std::uint8_
 #ifdef FIREWORK_WINDOWS
     std::array<std::uint8_t, 16> bytes{};
     
-    // TODO: log errors
-    
     int result = ::inet_pton(AF_INET6, ipv6Addr.c_str(), bytes.data());
     if (result == SOCKET_ERROR) {
-        // Other error
+        LOGGER.error("Error encountered while trying to decode IPv6 address: {}", ::WSAGetLastError());
         return {};
     }
 
     if (result == 0) {
-        // Invalid format
+        LOGGER.error("Invalid format for IPv6 address: {}", ipv6Addr);
         return {};
     }
     
@@ -58,4 +55,4 @@ auto IPv6_string_to_bytes(const std::string &ipv6Addr) -> std::array<std::uint8_
 #endif
 }
 
-} // namespace Firework
+} // namespace Firework::Networking

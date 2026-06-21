@@ -6,7 +6,7 @@
 
 #include <print>
 
-namespace Firework::RakNet
+namespace Firework::Networking
 {
     
 auto encode_string(const std::string &str, std::vector<std::uint8_t> &bytes) -> void;
@@ -122,7 +122,8 @@ auto FrameSetPacket::from_packet(const UDPPacket &packet) -> std::optional<Frame
     const std::uint8_t* data = packet.data();
 
     // Skip ID
-    reader.advance(1);
+    if (!reader.advance(1))
+        return std::nullopt;
 
     auto sequenceNumberOpt = reader.read_integral<uint24_t>(); 
     if (!sequenceNumberOpt) return std::nullopt;
@@ -143,47 +144,45 @@ auto FrameSetPacket::from_packet(const UDPPacket &packet) -> std::optional<Frame
         frame.reliability = static_cast<Reliability>(reliabilityBits);
         frame.isFragmented = flags & 0b00010000;
 
+        frame.isReliable  = is_reliable(frame.reliability);
+        frame.isSequenced = is_sequenced(frame.reliability);
+        frame.isOrdered   = is_ordered(frame.reliability);
+
         auto lengthBitsOpt = reader.read_integral<std::uint16_t>();
-        if (!sequenceNumberOpt) return std::nullopt;
+        if (!lengthBitsOpt) return std::nullopt;
         frame.payloadSizeBits = network_to_host(*lengthBitsOpt);
 
-        bool isReliable = is_reliable(frame.reliability);
-        if (isReliable) {
+        if (frame.isReliable) {
             frame.reliableFrameIndex = reader.read_integral<uint24_t>();
             if (!frame.reliableFrameIndex) return std::nullopt;
         }
 
-        bool isSequenced = is_sequenced(frame.reliability);
-        if (isSequenced) {
+        if (frame.isSequenced) {
             frame.sequencedFrameIndex = reader.read_integral<uint24_t>();
             if (!frame.sequencedFrameIndex) return std::nullopt;
         }
 
-        bool isOrdered = is_ordered(frame.reliability);
-        if (isOrdered) {
-            frame.orderedFrameIndex = reader.read_integral<uint16_t>();
+        if (frame.isOrdered) {
+            frame.orderedFrameIndex = reader.read_integral<uint24_t>();
             if (!frame.orderedFrameIndex) return std::nullopt;
 
             frame.orderChannel = reader.read_u8();
             if (!frame.orderChannel) return std::nullopt;
         }
 
-        std::optional<std::int32_t> compoundSize = std::nullopt;
-        std::optional<std::int16_t> compoundID   = std::nullopt;
-        std::optional<std::int32_t> fragmentIdx  = std::nullopt;
         if (frame.isFragmented) {
-            compoundSize = reader.read_integral<std::int32_t>();
-            if (!compoundSize) return std::nullopt;
+            frame.compoundSize = reader.read_integral<std::int32_t>();
+            if (!frame.compoundSize) return std::nullopt;
             
-            compoundID = reader.read_integral<std::int16_t>();
-            if (!compoundID) return std::nullopt;
+            frame.compoundID = reader.read_integral<std::int16_t>();
+            if (!frame.compoundID) return std::nullopt;
             
-            fragmentIdx = reader.read_integral<std::int32_t>();
-            if (!fragmentIdx) return std::nullopt;
+            frame.fragmentIdx = reader.read_integral<std::int32_t>();
+            if (!frame.fragmentIdx) return std::nullopt;
 
-            compoundSize = network_to_host(*compoundSize);
-            compoundID   = network_to_host(*compoundID);
-            fragmentIdx  = network_to_host(*fragmentIdx);
+            frame.compoundSize = network_to_host(*frame.compoundSize);
+            frame.compoundID   = network_to_host(*frame.compoundID);
+            frame.fragmentIdx  = network_to_host(*frame.fragmentIdx);
         }
         
         // Equivalent to ceil(frame.payloadSizeBits / 8)
@@ -287,4 +286,4 @@ auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
     return bytes;
 }
 
-} // namespace Firework::RakNet
+} // namespace Firework::Networking

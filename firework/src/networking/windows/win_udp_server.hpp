@@ -6,7 +6,7 @@
 
 #include "../udp_server.hpp"
 
-namespace Firework
+namespace Firework::Networking
 {
     
 using Socket = std::uint64_t;
@@ -33,4 +33,4 @@ private:
     std::queue<UDPPacket> _packetsQueue;
 };
 
-} // namespace Firework
+} // namespace Firework::Networking

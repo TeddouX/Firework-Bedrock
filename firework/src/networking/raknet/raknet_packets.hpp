@@ -8,7 +8,7 @@
 #include "../udp_packet.hpp"
 #include "../utils/uint24.hpp"
 
-namespace Firework::RakNet
+namespace Firework::Networking
 {
     
 constexpr std::uint8_t RAKNET_MAGIC[] = { 0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 
@@ -130,4 +130,4 @@ private:
     FrameSetPacket() = default;
 };
 
-} // namespace Firework::RakNet
+} // namespace Firework::Networking

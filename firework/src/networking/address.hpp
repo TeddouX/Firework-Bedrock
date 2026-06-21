@@ -3,7 +3,7 @@
 #include <string>
 #include <format>
 
-namespace Firework
+namespace Firework::Networking
 {
     
 enum class AddressFamily : std::uint8_t {
@@ -38,4 +38,4 @@ private:
     AddressFamily   _family;
 };
 
-} // namespace Firework
+} // namespace Firework::Networking

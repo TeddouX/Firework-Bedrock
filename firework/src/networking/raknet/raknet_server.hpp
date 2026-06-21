@@ -10,7 +10,7 @@
 #include "../udp_server.hpp"
 #include "../utils/uint24.hpp"
 
-namespace Firework::RakNet
+namespace Firework::Networking
 {
     
 struct ServerProperties {
@@ -91,4 +91,4 @@ private:
     auto decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t>;
 };
 
-} // namespace Firework::RakNet
+} // namespace Firework::Networking
