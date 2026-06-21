@@ -85,7 +85,7 @@ auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
     if (id & static_cast<uint8_t>(RakNetPacketType::FRAME_SET) && id < 0x90) {
         LOGGER.debug("Received frame set packet");
 
-        std::vector<uint8_t> frameSet = decode_frame_set(packet);
+        std::vector<FrameSetPacket::Frame> packets = decode_frame_set(packet);
 
         // Do smthing with it
 
@@ -150,21 +150,28 @@ auto RakNetServer::handle_connection_req_2(const UDPPacket &packet) -> void {
     LOGGER.debug("Sent ConnectionReply2.");
 }
 
-auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t> {
+auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<FrameSetPacket::Frame> {
     auto frameSetPacket = FrameSetPacket::from_packet(packet);
-
     if (!frameSetPacket) {
-        LOGGER.debug("Failed to decode frame set packet");
+        LOGGER.warn("Failed to decode frame set packet.");
         return {};
     }
+
+    RakNetConnection &connection = _openConnections.at(packet.addrInfo().to_string());
+    connection.lastReceivedTime = std::chrono::steady_clock::now();
+    
+    connection.update_sequence(frameSetPacket->sequence_number());
+
+    std::vector<FrameSetPacket::Frame> packets;
     for (FrameSetPacket::Frame frame : frameSetPacket->frames()) {
-        LOGGER.debug("Frame set packet payload: ");
-        for (std::uint8_t byte : frame.payload)
-            std::print("{:02X} ", byte);
-        std::print("\n");
+        std::vector<FrameSetPacket::Frame> frames = connection.update_frame_level_data(frame); 
+        if (frames.empty())
+            continue;
+
+        packets.insert(packets.end(), frames.begin(), frames.end());
     }
 
-    return {};
+    return packets;
 }
 
 auto RakNetServer::update_connections() -> void {

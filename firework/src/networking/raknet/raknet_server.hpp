@@ -5,10 +5,12 @@
 #include <chrono>
 #include <set>
 #include <unordered_map>
+#include <map>
 
 #include "../udp_packet.hpp"
 #include "../udp_server.hpp"
 #include "../utils/uint24.hpp"
+#include "raknet_connection.hpp"
 
 namespace Firework::Networking
 {
@@ -25,43 +27,6 @@ struct ServerProperties {
     std::uint16_t gameModeID{};
     std::uint16_t portIPv4;
     std::uint16_t portIPv6;
-};
-
-struct RakNetConnection {
-    AddressInfo address;
-
-    // Outgoing side
-    uint24_t nextSequenceNumber{0u}; // Next sequence number to assign to an outgoing datagram
-    // sequence# -> raw datagram bytes, for retransmission
-    // Raw datagram bytes are cleared at each ACK received by the client
-    std::unordered_map<uint24_t, std::vector<std::uint8_t>> sentDatagrams{}; 
-    std::chrono::steady_clock::time_point lastSendTime{}; // For retransmition of timing/timeouts
-
-    /*
-    
-    C seq: 0 -> S -> expectedSequenceNumber: 1
-    S seq: 0 -> C 
-    // Missing seq 1
-    C -> S seq: 2 -> seq != expectedSequenceNumber
-        => missingSequenceNumbers.append(i for i in range(seq - expectedSequenceNumber))
-            & connectionDirty = true;
-        => update_connections() -> NACK(1)
-    C seq 1 -> S
-    
-    If packet is UnreliableSequenced and is received out of order, ignore it
-    If a packet is UnreliableSequenced, and it is NACKed, don't resend it
-
-    */
-
-    // Incoming side
-    uint24_t expectedSequenceNumber{0u};                        // Next sequence number you expect to receive
-    uint24_t lastACKEDsequenceNumber{0u};                       // Used to build ACK ranges, and detect missing packets
-    std::set<uint24_t> missingSequenceNumbers{};                // Gaps detected -> need to NACK these
-    std::chrono::steady_clock::time_point lastReceivedTime{};   // Used for detecting timeouts
-    
-    // Misc
-    bool isFullyConnected; // Past handshake, into Game Packet phase
-    bool connectionDirty;  // Needs updating, set to true if datagrams were received
 };
 
 class RakNetServer {
@@ -88,7 +53,7 @@ private:
     auto handle_unconnected_ping(const UDPPacket &packet) -> void;
     auto handle_connection_req_1(const UDPPacket &packet) -> void;
     auto handle_connection_req_2(const UDPPacket &packet) -> void;
-    auto decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t>;
+    auto decode_frame_set(const UDPPacket &packet) -> std::vector<FrameSetPacket::Frame>;
 };
 
 } // namespace Firework::Networking

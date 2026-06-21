@@ -7,6 +7,9 @@ add_executable(FireworkSource)
 target_sources(FireworkSource PRIVATE
     "core/logger.cpp"
     "core/logger.hpp"
+
+    "networking/raknet/raknet_connection.cpp"
+    "networking/raknet/raknet_connection.hpp"
     "networking/raknet/raknet_packets.cpp"
     "networking/raknet/raknet_packets.hpp"
     "networking/raknet/raknet_server.cpp"
@@ -19,6 +22,7 @@ target_sources(FireworkSource PRIVATE
     "networking/address.hpp"
     "networking/udp_packet.hpp"
     "networking/udp_server.hpp"
+    
     "firework.hpp"
     "main.cpp"
 )

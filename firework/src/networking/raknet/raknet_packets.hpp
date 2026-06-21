@@ -61,7 +61,6 @@ struct ConnectionReply2Packet {
     auto encode() -> std::vector<std::uint8_t>;
 };
 
-// Frame Set
 class FrameSetPacket {
 public:
     enum class Reliability : std::uint8_t {
