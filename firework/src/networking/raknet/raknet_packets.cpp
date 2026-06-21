@@ -2,6 +2,7 @@
 
 #include "../utils/byte.hpp"
 #include "../utils/ip.hpp"
+#include "../utils/binary_reader.hpp"
 
 #include <print>
 
@@ -78,18 +79,133 @@ auto ConnectionReply2Packet::encode() -> std::vector<std::uint8_t> {
     return data;
 }
 
+auto FrameSetPacket::is_reliable(Reliability reliability) -> bool {
+    switch (reliability) {
+        using enum Reliability;
+        case Reliable:
+        case ReliableOrdered:
+        case ReliableSequenced:
+        case ReliableWithAckReceipt:
+        case ReliableOrderedWithAckReceipt:
+            return true;
+        
+        default: return false;
+    }
+}
 
-auto FrameSetPacket::from_packet(const UDPPacket &packet) -> FrameSetPacket {
-    
+auto FrameSetPacket::is_sequenced(Reliability reliability) -> bool {
+    switch (reliability) {
+        using enum Reliability;
+        case UnreliableSequenced:
+        case ReliableSequenced:
+            return true;
+        
+        default: return false;
+    }
+}
+
+auto FrameSetPacket::is_ordered(Reliability reliability) -> bool {
+    switch (reliability) {
+        using enum Reliability;
+        case UnreliableSequenced:
+        case ReliableOrdered:
+        case ReliableSequenced:
+        case ReliableOrderedWithAckReceipt:
+            return true;
+        
+        default: return false;
+    }
+}
+
+auto FrameSetPacket::from_packet(const UDPPacket &packet) -> std::optional<FrameSetPacket> {
+    BinaryReader reader{packet.data(), packet.dataSize()};
+    const std::uint8_t* data = packet.data();
+
+    // Skip ID
+    reader.advance(1);
+
+    auto sequenceNumberOpt = reader.read_integral<uint24_t>(); 
+    if (!sequenceNumberOpt) return std::nullopt;
+    uint24_t sequenceNumber = *sequenceNumberOpt;
+
+    FrameSetPacket result{};
+    result._sequenceNumber = sequenceNumber;
+
+    // Read all frames
+    while (reader.remaining() > 0) {
+        Frame frame{};
+
+        auto flagsOpt = reader.read_u8();
+        if (!sequenceNumberOpt) return std::nullopt;
+        std::uint8_t flags = *flagsOpt;
+        
+        std::uint8_t reliabilityBits = (flags & 0b11100000) >> 5;
+        frame.reliability = static_cast<Reliability>(reliabilityBits);
+        frame.isFragmented = flags & 0b00010000;
+
+        auto lengthBitsOpt = reader.read_integral<std::uint16_t>();
+        if (!sequenceNumberOpt) return std::nullopt;
+        frame.payloadSizeBits = network_to_host(*lengthBitsOpt);
+
+        bool isReliable = is_reliable(frame.reliability);
+        if (isReliable) {
+            frame.reliableFrameIndex = reader.read_integral<uint24_t>();
+            if (!frame.reliableFrameIndex) return std::nullopt;
+        }
+
+        bool isSequenced = is_sequenced(frame.reliability);
+        if (isSequenced) {
+            frame.sequencedFrameIndex = reader.read_integral<uint24_t>();
+            if (!frame.sequencedFrameIndex) return std::nullopt;
+        }
+
+        bool isOrdered = is_ordered(frame.reliability);
+        if (isOrdered) {
+            frame.orderedFrameIndex = reader.read_integral<uint16_t>();
+            if (!frame.orderedFrameIndex) return std::nullopt;
+
+            frame.orderChannel = reader.read_u8();
+            if (!frame.orderChannel) return std::nullopt;
+        }
+
+        std::optional<std::int32_t> compoundSize = std::nullopt;
+        std::optional<std::int16_t> compoundID   = std::nullopt;
+        std::optional<std::int32_t> fragmentIdx  = std::nullopt;
+        if (frame.isFragmented) {
+            compoundSize = reader.read_integral<std::int32_t>();
+            if (!compoundSize) return std::nullopt;
+            
+            compoundID = reader.read_integral<std::int16_t>();
+            if (!compoundID) return std::nullopt;
+            
+            fragmentIdx = reader.read_integral<std::int32_t>();
+            if (!fragmentIdx) return std::nullopt;
+
+            compoundSize = network_to_host(*compoundSize);
+            compoundID   = network_to_host(*compoundID);
+            fragmentIdx  = network_to_host(*fragmentIdx);
+        }
+        
+        // Equivalent to ceil(frame.payloadSizeBits / 8)
+        std::size_t payloadSize = (static_cast<std::size_t>(frame.payloadSizeBits) + 7) / 8;
+        auto payload = reader.read_bytes(payloadSize);
+        if (!payload) return std::nullopt;
+        
+        frame.payload.assign(payload->begin(), payload->end());
+        
+        result._frames.push_back(std::move(frame));
+    }
+
+    return result;
 }
 
 FrameSetPacket::FrameSetPacket(Reliability reliability, std::vector<const uint8_t *> packets, size_t packetsTotalSize) {
-
+    // TODO: implement FrameSetPacket constructor
 }
 
 // Returns each packet that needs to be sent in case of splitting if data is too big
 auto FrameSetPacket::encode() -> std::vector<std::vector<std::uint8_t>> {
-
+    return {};
 }
 
 

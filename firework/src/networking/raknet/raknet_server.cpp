@@ -83,6 +83,8 @@ auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
     }
 
     if (id & static_cast<uint8_t>(RakNetPacketType::FRAME_SET) && id < 0x90) {
+        std::println("Received frame set packet");
+
         std::vector<uint8_t> frameSet = decode_frame_set(packet);
 
         // Do smthing with it
@@ -149,7 +151,21 @@ auto RakNetServer::handle_connection_req_2(const UDPPacket &packet) -> void {
 }
 
 auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<uint8_t> {
+    auto frameSetPacket = FrameSetPacket::from_packet(packet);
 
+    if (!frameSetPacket) {
+        std::println("Failed to decode frame set packet");
+        return {};
+    }
+
+    for (FrameSetPacket::Frame frame : frameSetPacket->frames()) {
+        std::print("Frame Set Packet payload: ");
+        for (std::uint8_t byte : frame.payload)
+            std::print("{:02X} ", byte);
+        std::print("\n");
+    }
+
+    return {};
 }
 
 auto RakNetServer::update_connections() -> void {

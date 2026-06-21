@@ -38,7 +38,7 @@ constexpr const std::uint8_t *get_int_bytes(const _Integral &value) {
 }
 
 template <IsIntegral _Integral>
-constexpr const _Integral &int_from_bytes(const std::uint8_t *value) {
+constexpr _Integral int_from_bytes(const std::uint8_t *value) {
     if constexpr (std::is_same_v<_Integral, uint24_t>)
         return uint24_t{value};
     return *reinterpret_cast<const _Integral *>(value);

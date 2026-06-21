@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <optional>
 
 #include "../address.hpp"
 #include "../udp_packet.hpp"
@@ -63,7 +64,7 @@ struct ConnectionReply2Packet {
 // Frame Set
 class FrameSetPacket {
 public:
-    enum class Reliability {
+    enum class Reliability : std::uint8_t {
                                             // Is reliable      Is ordered      Is sequenced
         Unreliable = 0,                     // False            False           False
         UnreliableSequenced = 1,            // False            True            True
@@ -75,37 +76,58 @@ public:
         ReliableOrderedWithAckReceipt = 7,  // True             True            False
     };
 
+    static auto is_reliable(Reliability reliability) -> bool;
+    static auto is_sequenced(Reliability reliability) -> bool;
+    static auto is_ordered(Reliability reliability) -> bool;
+
     struct Frame {
         Reliability reliability;
+        // Deduced from reliability
+        bool isReliable;
+        bool isSequenced;
+        bool isOrdered;
+
         bool isFragmented;
-        std::uint16_t bufferSize; // In bits
+        
+        std::uint16_t payloadSizeBits; // In bits
+
+        // Only if reliable
+        std::optional<uint24_t> reliableFrameIndex;
+        // Only if sequenced
+        std::optional<uint24_t> sequencedFrameIndex;
         
         // Only if ordered
-        uint24_t reliableFrameIndex{0u};
-        uint24_t sequencedFrameIndex{0u};
-        
+        std::optional<uint24_t> orderedFrameIndex;
+        std::optional<uint8_t> orderChannel;
+
         // Only if isFragmented
-        std::int32_t compoundSize;
-        std::int16_t compoundID;
-        std::int32_t fragmentIdx;
+        std::optional<std::int32_t> compoundSize;
+        std::optional<std::int16_t> compoundID;
+        std::optional<std::int32_t> fragmentIdx;
+
+        std::vector<std::uint8_t> payload;
     };
 
-    static auto from_packet(const UDPPacket &packet) -> FrameSetPacket;
+    static auto from_packet(const UDPPacket &packet) -> std::optional<FrameSetPacket>;
 
     FrameSetPacket(Reliability reliability, std::vector<const uint8_t *> packets, size_t packetsTotalSize);
 
     // Returns each packet that needs to be sent in case of splitting if data is too big
     auto encode() -> std::vector<std::vector<std::uint8_t>>;
 
+    auto frames() const -> const std::vector<Frame> & { return _frames; } 
+    auto sequence_number() const -> const uint24_t & { return _sequenceNumber; } 
+
 private:
     // Unknown what these are used for, so we will just ignore them
-    // bool        _isPacketPair;
-    // bool        _isContinuousSend;
-    // bool        _needs_B_and_AS;
-    
-    uint24_t    _sequenceNumber;
+    // bool             _isPacketPair;
+    // bool             _isContinuousSend;
+    // bool             _needs_B_and_AS;
 
-    std::vector<Frame> _frames;
+    uint24_t            _sequenceNumber;
+    std::vector<Frame>  _frames;
+
+    FrameSetPacket() = default;
 };
 
 } // namespace Firework::RakNet

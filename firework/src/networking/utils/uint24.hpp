@@ -15,8 +15,8 @@ public:
         : _data{0}
     {}
 
-    uint24_t(const std::uint8_t *bytes, std::size_t readOff = 0ULL) {
-        std::memcpy(_data, bytes + readOff, SIZE_BYTES);
+    uint24_t(const std::uint8_t *bytes) {
+        std::memcpy(_data, bytes, SIZE_BYTES);
     }
 
     uint24_t(const uint24_t &val) {
@@ -64,7 +64,7 @@ public:
     }
     
     auto operator=(const std::uint32_t &other) -> uint24_t & {
-        auto otherBytes = reinterpret_cast<const std::uint8_t *>(other);
+        auto otherBytes = reinterpret_cast<const std::uint8_t *>(&other);
         std::memcpy(_data, otherBytes, SIZE_BYTES);
         return *this;
     }
