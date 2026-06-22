@@ -132,12 +132,9 @@ auto WinUDPServer::receive_thread() -> void {
         ::inet_ntop(AF_INET, addrData, clientIP, sizeof(clientIP));
         std::uint16_t port = network_to_host(clientAddr.sin_port);
 
-        AddressInfo info{std::string(clientIP), port, AddressFamily::IPv4};
-        UDPPacket packet{
-            info, 
-            reinterpret_cast<const std::uint8_t *>(recvBuf), 
-            static_cast<std::size_t>(recvSize)
-        };
+        std::vector<std::uint8_t> data{recvBuf, recvBuf + recvSize};
+        AddressInfo addrInfo{std::string(clientIP), port, AddressFamily::IPv4};
+        UDPPacket packet{addrInfo, data};
 
         {
             std::lock_guard<std::mutex> guard(_packetsMutex);

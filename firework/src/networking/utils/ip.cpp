@@ -1,8 +1,8 @@
 #include "ip.hpp"
 
 #include "byte.hpp"
-#include "../../firework.hpp"
 #include "../networking.hpp"
+#include "../../firework.hpp"
 
 #ifdef FIREWORK_WINDOWS
     #include <ws2tcpip.h>
@@ -17,8 +17,8 @@ auto IPv4_string_to_bytes(const std::string &ipv4Addr) -> std::array<std::uint8_
 #ifdef FIREWORK_WINDOWS
     std::array<std::uint8_t, 4> bytes{};
 
-    int result = ::inet_pton(AF_INET, ipv4Addr.c_str(), bytes.data()) == SOCKET_ERROR;
-    if (result == SOCKET_ERROR) {
+    int result = ::inet_pton(AF_INET, ipv4Addr.c_str(), bytes.data());
+    if (result == -1) {
         LOGGER.error("Error encountered while trying to decode IPv4 address: {}", ::WSAGetLastError());
         return {};
     }
@@ -39,7 +39,7 @@ auto IPv6_string_to_bytes(const std::string &ipv6Addr) -> std::array<std::uint8_
     std::array<std::uint8_t, 16> bytes{};
     
     int result = ::inet_pton(AF_INET6, ipv6Addr.c_str(), bytes.data());
-    if (result == SOCKET_ERROR) {
+    if (result == -1) {
         LOGGER.error("Error encountered while trying to decode IPv6 address: {}", ::WSAGetLastError());
         return {};
     }

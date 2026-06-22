@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 #include <string>
-#include <format>
 
 namespace Firework::Networking
 {
@@ -13,24 +12,16 @@ enum class AddressFamily : std::uint8_t {
 
 class AddressInfo {
 public:
-    constexpr AddressInfo() = default;
-    constexpr AddressInfo(std::string ipAddr, std::uint16_t port, AddressFamily family)
-        : _ipAddr{ipAddr}
-        , _port{port}
-        , _family{family}
-    {
-    }
+    AddressInfo() = default;
+    AddressInfo(std::string ipAddr, std::uint16_t port, AddressFamily family);
 
-    constexpr auto ipAddr() const -> const std::string & { return _ipAddr; }
-    constexpr auto port() const -> const std::uint16_t & { return _port; }
-    constexpr auto family() const -> const AddressFamily & { return _family; }
+    auto ipAddr() const -> const std::string &;
+    auto port() const -> const std::uint16_t &;
+    auto family() const -> const AddressFamily &;
 
-    constexpr std::string to_string() const {
-        if (_family == AddressFamily::IPv4)
-            return std::format("{}:{}", _ipAddr, _port);
-        else
-            return std::format("[{}]:{}", _ipAddr, _port);
-    }
+    auto to_string() const -> std::string;
+
+    auto operator==(const AddressInfo &other) const noexcept -> bool;
 
 private:
     std::string     _ipAddr;
@@ -39,3 +30,10 @@ private:
 };
 
 } // namespace Firework::Networking
+
+template<> 
+struct std::hash<Firework::Networking::AddressInfo> {
+    std::size_t operator()(const Firework::Networking::AddressInfo& s) const noexcept {
+        return std::hash<std::string>{}(s.to_string());
+    }
+};

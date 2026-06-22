@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED true)
 
 add_executable(FireworkSource)
 target_sources(FireworkSource PRIVATE
+    "binary/binary_reader.cpp"
+    "binary/binary_reader.hpp"
+    "binary/binary_writer.cpp"
+    "binary/binary_writer.hpp"
+    
     "core/logger.cpp"
     "core/logger.hpp"
 
@@ -14,15 +19,15 @@ target_sources(FireworkSource PRIVATE
     "networking/raknet/raknet_packets.hpp"
     "networking/raknet/raknet_server.cpp"
     "networking/raknet/raknet_server.hpp"
-    "networking/utils/binary_reader.cpp"
-    "networking/utils/binary_reader.hpp"
     "networking/utils/byte.hpp"
     "networking/utils/ip.cpp"
     "networking/utils/ip.hpp"
+    "networking/address.cpp"
     "networking/address.hpp"
     "networking/udp_packet.hpp"
     "networking/udp_server.hpp"
-    
+    "networking/uint24.hpp"
+
     "firework.hpp"
     "main.cpp"
 )

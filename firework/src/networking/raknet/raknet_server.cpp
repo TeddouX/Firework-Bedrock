@@ -59,105 +59,83 @@ auto RakNetServer::update_server_properties(const ServerProperties &serverProper
 auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
     if (packet.dataSize() < 1)
         return;
-
-    uint8_t id = packet.data()[0];
-    auto packetType = static_cast<RakNetPacketType>(id);
-
-    LOGGER.debug("Packet id 0x{:02X}", id);
-
-    switch (packetType)
-    {
-        using enum RakNetPacketType;
-        case UNCONNECTED_PING_1:
-        case UNCONNECTED_PING_2:
-            handle_unconnected_ping(packet);
-            return;
-        
-        case OPEN_CONNECTION_REQ_1:
-            handle_connection_req_1(packet);
-            return;
-        
-        case OPEN_CONNECTION_REQ_2:
-            handle_connection_req_2(packet);
-            return;
-    }
-
+    
+    std::uint8_t id = packet.data()[0];
     if (id & static_cast<uint8_t>(RakNetPacketType::FRAME_SET) && id < 0x90) {
         LOGGER.debug("Received frame set packet");
 
-        std::vector<FrameSetPacket::Frame> packets = decode_frame_set(packet);
-
-        // Do smthing with it
-
+        std::vector<FrameSetPacket::Frame> frames = decode_frame_set(packet);
+        for (FrameSetPacket::Frame frame : frames)
+            handle_packet(packet.addrInfo(), frame.payload);
+    
         return;
     }
 
-    LOGGER.warn("Unhandled packet: '{}'", id);
+    handle_packet(packet.addrInfo(), packet.data());
 }
 
-auto RakNetServer::handle_unconnected_ping(const UDPPacket &packet) -> void {
-    if (packet.dataSize() < 1 + sizeof(std::uint64_t)) {
-        LOGGER.warn("Unconnected Ping packet too small from address {}", packet.addrInfo().to_string());
-        return;
-    }
-
+auto RakNetServer::handle_unconnected_ping(const AddressInfo &addrInfo, const UnconnectedPingPacket &packet) -> void {
     UnconnectedPongPacket replyPacket{};
-    replyPacket.echoedTime = int_from_bytes<std::uint64_t>(packet.data() + 1);
+    replyPacket.echoedTime = packet.time;
     replyPacket.serverGUID = _guid;
     replyPacket.serverIdString = _cachedServerIDString;
 
-    _udpServer->send(replyPacket.encode(), packet.addrInfo());
+    _udpServer->send(replyPacket.encode(), addrInfo);
 
     LOGGER.debug("Sent UnconnectedPong");
 }
 
-auto RakNetServer::handle_connection_req_1(const UDPPacket &packet) -> void {  
-    ConnectionReply1Packet replyPacket{};
+auto RakNetServer::handle_open_connection_req_1(const AddressInfo &addrInfo, const OpenConnectionRequest1Packet &packet) -> void {  
+    OpenConnectionReply1Packet replyPacket{};
     replyPacket.serverGUID = _guid;
-    replyPacket.useSecurity = false;
-    replyPacket.securityCookie = 0;
     
-    //                                            ID  MAGIC                  PROTOCOL VERSION
-    std::uint16_t paddingSize = packet.dataSize() - 1 - sizeof(RAKNET_MAGIC) - 1; // This is the size of the padded zeroes
-    std::uint16_t mtu = paddingSize + 46; // (see https://minecraft.wiki/w/RakNet#Open_Connection_Request_1 for the +46 explanation)
-    replyPacket.MTU = mtu;
+    std::uint16_t connectionMTU = std::min(packet.MTU, static_cast<std::uint16_t>(MAX_PACKET_SIZE));
+    replyPacket.MTU = connectionMTU;
 
-
-    if (_udpServer->send(replyPacket.encode(), packet.addrInfo())) {
+    if (_udpServer->send(replyPacket.encode(), addrInfo)) {
         // On successful reply, add a new connection
         RakNetConnection connection{};
-        connection.address = packet.addrInfo();
+        connection.address = addrInfo;
         connection.isFullyConnected = false;
+        connection.MTU = connectionMTU;
 
-        _openConnections.emplace(packet.addrInfo().to_string(), connection);
+        _openConnections.emplace(addrInfo, connection);
 
         LOGGER.debug("Sent ConnectionReply1.");
     }
 }
 
-auto RakNetServer::handle_connection_req_2(const UDPPacket &packet) -> void {
-    ConnectionReply2Packet replyPacket{};
-    replyPacket.serverGUID = _guid;
-    replyPacket.clientAddress = packet.addrInfo();
-    replyPacket.useSecurity = false;
-    
-    auto mtu = static_cast<std::uint16_t>(MAX_PACKET_SIZE);
-    mtu = host_to_network(mtu);
-    replyPacket.MTU = mtu;
+auto RakNetServer::handle_open_connection_req_2(const AddressInfo &addrInfo, const OpenConnectionRequest2Packet &packet) -> void {
+    auto it = _openConnections.find(addrInfo);
+    if (it == _openConnections.end())
+        return;
 
-    _udpServer->send(replyPacket.encode(), packet.addrInfo());
+    OpenConnectionReply2Packet replyPacket{};
+    replyPacket.serverGUID = _guid;
+    replyPacket.clientAddress = addrInfo;
+    replyPacket.MTU = it->second.MTU;
+
+    _udpServer->send(replyPacket.encode(), addrInfo);
 
     LOGGER.debug("Sent ConnectionReply2.");
 }
 
+auto RakNetServer::handle_connection_request(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &packet) -> void {
+
+}
+
 auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<FrameSetPacket::Frame> {
-    auto frameSetPacket = FrameSetPacket::from_packet(packet);
+    auto frameSetPacket = FrameSetPacket::from_packet(packet.data());
     if (!frameSetPacket) {
         LOGGER.warn("Failed to decode frame set packet.");
         return {};
     }
 
-    RakNetConnection &connection = _openConnections.at(packet.addrInfo().to_string());
+    auto it = _openConnections.find(packet.addrInfo());
+    if (it == _openConnections.end())
+        return {};
+    
+    RakNetConnection &connection = it->second;
     connection.lastReceivedTime = std::chrono::steady_clock::now();
     
     connection.update_sequence(frameSetPacket->sequence_number());
@@ -176,6 +154,50 @@ auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<Fram
 
 auto RakNetServer::update_connections() -> void {
     // Send ACKs and NACKs
+}
+
+auto RakNetServer::handle_packet(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &data) -> void {
+    if (data.size() < 1)
+        return;
+
+    uint8_t id = data[0];
+    auto packetType = static_cast<RakNetPacketType>(id);
+
+    switch (packetType)
+    {
+        using enum RakNetPacketType;
+        case UNCONNECTED_PING_1:
+        case UNCONNECTED_PING_2: {
+            auto packet = UnconnectedPingPacket::from_packet(data);
+            if (!packet) return;
+
+            handle_unconnected_ping(addrInfo, *packet);
+            return;
+        }
+        
+        case OPEN_CONNECTION_REQ_1: {
+            auto packet = OpenConnectionRequest1Packet::from_packet(data);
+            if (!packet) return;
+
+            handle_open_connection_req_1(addrInfo, *packet);
+            return;
+        }
+
+        case OPEN_CONNECTION_REQ_2: {
+            auto packet = OpenConnectionRequest2Packet::from_packet(data);
+            if (!packet) return;
+
+            handle_open_connection_req_2(addrInfo, *packet);
+            return;
+        }
+
+        case CONNECTION_REQUEST: {
+            handle_connection_request(addrInfo, data);
+            return;
+        }
+    }
+
+    LOGGER.warn("Unhandled packet {:02X}", id);
 }
 
 } // namespace Firework::Networking

@@ -13,26 +13,21 @@ class UDPPacket {
 public:
     constexpr UDPPacket()
         : _addrInfo{}
-        , _data{0}
-        , _dataSize{0}
+        , _data{}
     {}
 
-    UDPPacket(AddressInfo addrInfo, const std::uint8_t *data, std::size_t dataSize)
+    UDPPacket(AddressInfo addrInfo, const std::vector<std::uint8_t> &data)
         : _addrInfo(addrInfo)
-        , _data{0}
-        , _dataSize(dataSize) 
-    {
-        std::memcpy(_data, data, dataSize);
-    }
+        , _data{data}
+    {}
 
     constexpr auto addrInfo() const -> const AddressInfo & { return _addrInfo; }
-    constexpr auto data() const -> const std::uint8_t * { return _data; }
-    constexpr auto dataSize() const -> const std::size_t & { return _dataSize; }
+    constexpr auto data() const -> const std::vector<std::uint8_t> & { return _data; }
+    constexpr auto dataSize() const -> std::size_t { return _data.size(); }
 
 private:
-    AddressInfo     _addrInfo;
-    std::uint8_t    _data[MAX_PACKET_SIZE];
-    std::size_t     _dataSize;
+    AddressInfo                 _addrInfo;
+    std::vector<std::uint8_t>   _data;
 };
 
 } // namespace Firework::Networking

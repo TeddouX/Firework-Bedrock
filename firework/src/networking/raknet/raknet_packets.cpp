@@ -2,81 +2,126 @@
 
 #include "../utils/byte.hpp"
 #include "../utils/ip.hpp"
-#include "../utils/binary_reader.hpp"
+#include "../../binary/binary_reader.hpp"
+#include "../../binary/binary_writer.hpp"
 
 #include <print>
 
 namespace Firework::Networking
 {
-    
-auto encode_string(const std::string &str, std::vector<std::uint8_t> &bytes) -> void;
-auto insert_at_vec_end(const std::vector<std::uint8_t> &src, std::vector<std::uint8_t> &dest) -> void;
-auto insert_at_vec_end(const std::uint8_t *src, std::size_t size, std::vector<std::uint8_t> &dest) -> void;
-auto add_id(std::vector<std::uint8_t> &dest, RakNetPacketType packetType) -> void;
+
 auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t>;
 
-#define CREATE_DATA_VECTOR(size) std::vector<std::uint8_t> data{}; data.reserve(size)
 
 
+auto UnconnectedPingPacket::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<UnconnectedPingPacket> {
+    if (packet.size() != UnconnectedPingPacket::SIZE)
+        return std::nullopt;
+
+    BinaryReader reader{packet};
+
+    RakNetPacketType packetType = *reader.read_packet_type();
+    if (packetType != RakNetPacketType::UNCONNECTED_PING_1 && packetType != RakNetPacketType::UNCONNECTED_PING_2)
+        return std::nullopt;
+
+    UnconnectedPingPacket finalPacket{};
+
+    finalPacket.time = network_to_host(*reader.read_integral<std::uint64_t>());
+    reader.advance(RAKNET_MAGIC_SIZE);
+    finalPacket.clientGUID = network_to_host(*reader.read_integral<std::uint64_t>());
+
+    return finalPacket;
+}
 
 auto UnconnectedPongPacket::encode() -> std::vector<std::uint8_t> {
-    const size_t packetSizeBytes = 1    // ID
-        + sizeof(echoedTime)            // Time
-        + sizeof(serverGUID)            // Server GUID
-        + sizeof(RAKNET_MAGIC)          // Magic
-        + sizeof(std::uint8_t)          // Server ID string size
-        + serverIdString.size();        // Server ID string
-
-    CREATE_DATA_VECTOR(packetSizeBytes);
-
-    add_id(data, RakNetPacketType::UNCONNECTED_PONG);                       // ID
-    insert_at_vec_end(get_int_bytes(echoedTime), sizeof(echoedTime), data); // Time (echoed)
-    insert_at_vec_end(get_int_bytes(serverGUID), sizeof(serverGUID), data); // Server GUID
-    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);            // Magic
-    encode_string(serverIdString, data);
-
-    return data;
-}
-
-auto ConnectionReply1Packet::encode() -> std::vector<std::uint8_t> {
     const size_t packetSizeBytes = 1
-        + sizeof(RAKNET_MAGIC)
+        + sizeof(echoedTime)
         + sizeof(serverGUID)
-        + sizeof(useSecurity)
-        + sizeof(securityCookie)
-        + sizeof(MTU);
+        + RAKNET_MAGIC_SIZE
+        + sizeof(std::uint16_t)
+        + serverIdString.size();
 
-    CREATE_DATA_VECTOR(packetSizeBytes);
+    BinaryWriter writer{packetSizeBytes};
 
-    add_id(data, RakNetPacketType::OPEN_CONNECTION_REP_1);                          // ID
-    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);                    // Magic
-    insert_at_vec_end(get_int_bytes(serverGUID), sizeof(serverGUID), data);         // Server GUID
-    data.push_back(static_cast<std::uint8_t>(useSecurity));                         // Security is handled by bedrock's protocol
-    insert_at_vec_end(get_int_bytes(securityCookie), sizeof(securityCookie), data); // Cookie (unused)
-    insert_at_vec_end(get_int_bytes(MTU), sizeof(MTU), data);                       // MTU
+    writer.write_packet_type(RakNetPacketType::UNCONNECTED_PONG);
+    writer.write_integral(host_to_network(echoedTime));
+    writer.write_integral(host_to_network(serverGUID));
+    writer.write_bytes(RAKNET_MAGIC);
+    writer.write_integral(host_to_network(static_cast<std::uint16_t>(serverIdString.size())));
+    writer.write_string(serverIdString);
 
-    return data;
+    return writer.get_data();
 }
 
-auto ConnectionReply2Packet::encode() -> std::vector<std::uint8_t> {
-    const size_t addressSize = clientAddress.family() == AddressFamily::IPv4 ? 7 : 29;
-    const size_t packetSizeBytes = 1
-        + sizeof(RAKNET_MAGIC)  // Magic
-        + sizeof(serverGUID)    // Server GUID
-        + addressSize           // 7 for IPv4; 29 for IPv6
-        + sizeof(MTU)           // MTU
-        + sizeof(useSecurity);  // Use security
+auto OpenConnectionRequest1Packet::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<OpenConnectionRequest1Packet> {
+    if (packet.size() < OpenConnectionRequest1Packet::MIN_SIZE)
+        return std::nullopt;
 
-    CREATE_DATA_VECTOR(packetSizeBytes);
+    BinaryReader reader{packet};
+    
+    RakNetPacketType packetType = *reader.read_packet_type();
+    if (packetType != RakNetPacketType::OPEN_CONNECTION_REQ_1)
+        return std::nullopt;
 
-    add_id(data, RakNetPacketType::OPEN_CONNECTION_REP_2);
-    insert_at_vec_end(RAKNET_MAGIC, sizeof(RAKNET_MAGIC), data);            // Magic
-    insert_at_vec_end(get_int_bytes(serverGUID), sizeof(serverGUID), data); // Server GUID
-    insert_at_vec_end(ip_to_bytes(clientAddress), data);                    // Client IP
-    insert_at_vec_end(get_int_bytes(MTU), sizeof(MTU), data);               // MTU
-    data.push_back(static_cast<std::uint8_t>(useSecurity));
+    OpenConnectionRequest1Packet finalPacket{};
 
-    return data;
+    reader.advance(RAKNET_MAGIC_SIZE);
+    finalPacket.protocolVersion = *reader.read_u8();
+
+    //                                          ID  MAGIC               PROTOCOL VERSION
+    std::uint16_t paddingSize = packet.size() - 1 - RAKNET_MAGIC_SIZE - 1; // This is the size of the padded zeroes
+    finalPacket.MTU = paddingSize + 46; // (see https://minecraft.wiki/w/RakNet#Open_Connection_Request_1 for the +46 explanation)
+
+    return finalPacket;
+}
+
+auto OpenConnectionReply1Packet::encode() -> std::vector<std::uint8_t> {
+    BinaryWriter writer{OpenConnectionReply1Packet::SIZE};
+
+    writer.write_packet_type(RakNetPacketType::OPEN_CONNECTION_REP_1);
+    writer.write_bytes(RAKNET_MAGIC);
+    writer.write_integral(host_to_network(serverGUID));
+    writer.write_u8(0u); // Use Security: We use bedrock's protocol security
+    writer.write_integral(host_to_network(MTU));
+
+    return writer.get_data();
+}
+
+auto OpenConnectionRequest2Packet::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<OpenConnectionRequest2Packet> {
+    LOGGER.debug("{} {}", packet.size(), OpenConnectionRequest2Packet::SIZE);
+    if (packet.size() != OpenConnectionRequest2Packet::SIZE)
+        return std::nullopt;
+
+    BinaryReader reader{packet};
+    
+    RakNetPacketType packetType = *reader.read_packet_type();
+    if (packetType != RakNetPacketType::OPEN_CONNECTION_REQ_2)
+        return std::nullopt;
+
+    OpenConnectionRequest2Packet finalPacket{};
+
+    reader.advance(RAKNET_MAGIC_SIZE);
+
+    std::span<const std::uint8_t> serverAddress = *reader.read_bytes(sizeof(finalPacket.serverAddress));
+    std::copy(serverAddress.begin(), serverAddress.begin(), finalPacket.serverAddress.end());
+
+    finalPacket.MTU = network_to_host(*reader.read_integral<std::uint16_t>());
+    finalPacket.clientGUI = network_to_host(*reader.read_integral<std::uint64_t>());
+
+    return finalPacket;
+}
+
+auto OpenConnectionReply2Packet::encode() -> std::vector<std::uint8_t> {
+    BinaryWriter writer{SIZE};
+
+    writer.write_packet_type(RakNetPacketType::OPEN_CONNECTION_REP_2);
+    writer.write_bytes(RAKNET_MAGIC);
+    writer.write_integral(host_to_network(serverGUID));
+    writer.write_bytes(ip_to_bytes(clientAddress));
+    writer.write_integral(host_to_network(MTU));
+    writer.write_u8(0u); // Use Security: We use bedrock's protocol security
+
+    return writer.get_data();
 }
 
 auto FrameSetPacket::is_reliable(Reliability reliability) -> bool {
@@ -117,9 +162,8 @@ auto FrameSetPacket::is_ordered(Reliability reliability) -> bool {
     }
 }
 
-auto FrameSetPacket::from_packet(const UDPPacket &packet) -> std::optional<FrameSetPacket> {
-    BinaryReader reader{packet.data(), packet.dataSize()};
-    const std::uint8_t* data = packet.data();
+auto FrameSetPacket::from_packet(const std::vector<std::uint8_t> &data) -> std::optional<FrameSetPacket> {
+    BinaryReader reader{data};
 
     // Skip ID
     if (!reader.advance(1))
@@ -198,46 +242,13 @@ auto FrameSetPacket::from_packet(const UDPPacket &packet) -> std::optional<Frame
     return result;
 }
 
-FrameSetPacket::FrameSetPacket(Reliability reliability, std::vector<const uint8_t *> packets, size_t packetsTotalSize) {
+FrameSetPacket::FrameSetPacket(Reliability reliability, const std::vector<const std::vector<std::uint8_t> *> &packets, size_t packetsTotalSize) {
     // TODO: implement FrameSetPacket constructor
 }
 
 // Returns each packet that needs to be sent in case of splitting if data is too big
 auto FrameSetPacket::encode() -> std::vector<std::vector<std::uint8_t>> {
     return {};
-}
-
-
-
-auto encode_string(const std::string &str, std::vector<std::uint8_t> &bytes) -> void {
-    auto strBytes = reinterpret_cast<const uint8_t *>(str.c_str());
-    auto strSize = static_cast<std::uint16_t>(str.size());
-    strSize = host_to_network(strSize);
-
-    auto strSizeBytes = reinterpret_cast<const std::uint8_t *>(&strSize);
-    bytes.insert(
-        bytes.end(),
-        strSizeBytes,
-        strSizeBytes + sizeof(strSize)
-    );
-
-    bytes.insert(
-        bytes.end(), 
-        strBytes, 
-        strBytes + str.size()
-    );
-}
-
-auto insert_at_vec_end(const std::vector<std::uint8_t> &src, std::vector<std::uint8_t> &dest) -> void {
-    dest.insert(dest.end(), src.begin(), src.end());
-}
-
-auto insert_at_vec_end(const std::uint8_t *src, std::size_t size, std::vector<std::uint8_t> &dest) -> void {
-    dest.insert(dest.end(), src, src + size);
-}
-
-auto add_id(std::vector<std::uint8_t> &dest, RakNetPacketType packetType) -> void {
-    dest.push_back(static_cast<std::uint8_t>(packetType));
 }
 
 auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
@@ -259,31 +270,22 @@ auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
 
     port = network_to_host(port);
 
-    std::vector<std::uint8_t> bytes;
-    bytes.reserve(IPv6 ? 29 : 7);
+    BinaryWriter writer{IPv6 ? 29ULL : 7ULL};
     
-    bytes.push_back(static_cast<std::uint8_t>(family));
+    writer.write_u8(static_cast<std::uint8_t>(family));
 
     if (IPv6) {
-        // Address family
-        insert_at_vec_end(get_int_bytes<std::uint16_t>(23), sizeof(std::uint16_t), bytes);
-        // Port
-        insert_at_vec_end(get_int_bytes(port), sizeof(port), bytes);
-        // Flow 
-        insert_at_vec_end(get_int_bytes<std::uint32_t>(0), sizeof(std::uint32_t), bytes); 
+        writer.write_integral(23);      // IPv6 Address family
+        writer.write_integral(port);    // IPv6 Port
+        writer.write_integral(0);       // IPv6 Flow 
     } 
 
-    // IP bytes
-    insert_at_vec_end(ipBytes, bytes);
+    writer.write_bytes(ipBytes); // IP bytes
 
-    if (IPv6)
-        // Scope ID 
-        insert_at_vec_end(get_int_bytes<std::uint32_t>(0), sizeof(std::uint32_t), bytes); 
-    else
-        // Port
-        insert_at_vec_end(get_int_bytes(port), sizeof(port), bytes);
+    if (IPv6) writer.write_integral(0);     // IPv6 Scope ID 
+    else      writer.write_integral(port);  // IPv4 Port
 
-    return bytes;
+    return writer.get_data();
 }
 
 } // namespace Firework::Networking

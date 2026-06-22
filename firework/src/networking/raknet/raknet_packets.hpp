@@ -3,16 +3,18 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <array>
 
 #include "../address.hpp"
 #include "../udp_packet.hpp"
-#include "../utils/uint24.hpp"
+#include "../uint24.hpp"
 
 namespace Firework::Networking
 {
     
 constexpr std::uint8_t RAKNET_MAGIC[] = { 0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 
                                           0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78 };
+constexpr std::size_t RAKNET_MAGIC_SIZE = sizeof(RAKNET_MAGIC);
 
 enum class RakNetPacketType : std::uint8_t {
     UNCONNECTED_PING_1          = 0x01,
@@ -35,29 +37,109 @@ enum class RakNetPacketType : std::uint8_t {
     NACK                        = 0xA0,
 };
 
+// ID: uint8
+// Time: uint64 little-endian
+// MAGIC
+// Client GUID: uint64 little-endian
+struct UnconnectedPingPacket {
+    std::uint64_t time;
+    std::uint64_t clientGUID;
+
+    static constexpr std::size_t SIZE = 1 
+        + sizeof(time) 
+        + RAKNET_MAGIC_SIZE 
+        + sizeof(clientGUID);
+
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<UnconnectedPingPacket>;
+};
+
+// ID: uint8
+// Echoed Time: uint64 little-endian
+// Server GUID: uint64 little-endian
+// MAGIC
+// Server ID String length: uint16 little-endian
+// Server ID String: string
 struct UnconnectedPongPacket {
-    std::uint64_t echoedTime;
+    std::int64_t echoedTime;
     std::uint64_t serverGUID;
     std::string serverIdString;
 
     auto encode() -> std::vector<std::uint8_t>;
 };
 
-struct ConnectionReply1Packet {
-    std::uint64_t serverGUID;
-    bool useSecurity;
-    std::int32_t securityCookie;
+// ID: uint8
+// MAGIC
+// Protocol version: byte
+// MTU: zero padding
+struct OpenConnectionRequest1Packet {
+    std::uint8_t protocolVersion;
     std::uint16_t MTU;
+
+    static constexpr std::size_t MIN_SIZE = 1
+        + RAKNET_MAGIC_SIZE
+        + sizeof(protocolVersion);
+
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<OpenConnectionRequest1Packet>;
+};
+
+// ID: uint8
+// MAGIC
+// Server GUID: uint64 little-endian
+// Use security: bool (false)
+// Cookie: int32 (unused)
+// MTU: uint16
+struct OpenConnectionReply1Packet {
+    std::uint64_t serverGUID;
+    std::uint16_t MTU;
+
+    static constexpr std::size_t SIZE = 1
+        + RAKNET_MAGIC_SIZE
+        + sizeof(serverGUID)
+        + sizeof(bool)
+        + sizeof(MTU); 
 
     auto encode() -> std::vector<std::uint8_t>;
 };
 
-struct ConnectionReply2Packet {
+// ID: uint8
+// MAGIC
+// Cookie: int (unused)
+// Has security challenge: bool (unused)
+// Server address: 7 IPv4 (supported), 29 IPv6 (unsupported)
+// MTU: uint16
+// Client GUID: uint64
+struct OpenConnectionRequest2Packet {
+    std::array<std::uint8_t, 7> serverAddress{};
+    std::uint16_t MTU;
+    std::uint64_t clientGUI;
+
+    static constexpr std::size_t SIZE = 1
+        + RAKNET_MAGIC_SIZE
+        + 7
+        + sizeof(MTU)
+        + sizeof(clientGUI);
+
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<OpenConnectionRequest2Packet>;
+};
+
+// ID: uint8
+// MAGIC
+// Server GUID: uint64
+// Client Address: 7 IPv4 (supported), 29 IPv6 (unsupported)
+// MTU: uint16
+// Encryption enabled: boolean (false)
+struct OpenConnectionReply2Packet {
     std::uint64_t serverGUID;
     AddressInfo clientAddress;
     std::uint16_t MTU;
-    bool useSecurity;
     
+    static constexpr std::size_t SIZE = 1
+        + RAKNET_MAGIC_SIZE
+        + sizeof(serverGUID)
+        + 7
+        + sizeof(MTU)
+        + sizeof(bool);
+
     auto encode() -> std::vector<std::uint8_t>;
 };
 
@@ -107,9 +189,9 @@ public:
         std::vector<std::uint8_t> payload;
     };
 
-    static auto from_packet(const UDPPacket &packet) -> std::optional<FrameSetPacket>;
+    static auto from_packet(const std::vector<std::uint8_t> &data) -> std::optional<FrameSetPacket>;
 
-    FrameSetPacket(Reliability reliability, std::vector<const uint8_t *> packets, size_t packetsTotalSize);
+    FrameSetPacket(Reliability reliability, const std::vector<const std::vector<std::uint8_t> *> &packets, size_t packetsTotalSize);
 
     // Returns each packet that needs to be sent in case of splitting if data is too big
     auto encode() -> std::vector<std::vector<std::uint8_t>>;

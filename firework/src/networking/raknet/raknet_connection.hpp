@@ -6,7 +6,7 @@
 #include <set>
 #include <array>
 
-#include "../utils/uint24.hpp"
+#include "../uint24.hpp"
 #include "../address.hpp"
 #include "raknet_packets.hpp"
 
@@ -49,6 +49,7 @@ struct RakNetConnection {
 
     // Misc
     bool isFullyConnected; // Past handshake, into Game Packet phase
+    std::uint16_t MTU;
 
     // Example behaviour:
     // received 0: expectedSequenceNumber = 1

@@ -9,7 +9,7 @@
 
 #include "../udp_packet.hpp"
 #include "../udp_server.hpp"
-#include "../utils/uint24.hpp"
+#include "../uint24.hpp"
 #include "raknet_connection.hpp"
 
 namespace Firework::Networking
@@ -46,14 +46,16 @@ private:
 
     std::shared_ptr<UDPServer> _udpServer;
     // ip:port -> connection, these are the connections that have sent a Connection Request 1 packet
-    std::unordered_map<std::string, RakNetConnection> _openConnections;
+    std::unordered_map<AddressInfo, RakNetConnection> _openConnections;
 
     auto properties_to_string() -> const std::string &;
 
-    auto handle_unconnected_ping(const UDPPacket &packet) -> void;
-    auto handle_connection_req_1(const UDPPacket &packet) -> void;
-    auto handle_connection_req_2(const UDPPacket &packet) -> void;
+    auto handle_unconnected_ping(const AddressInfo &addrInfo, const UnconnectedPingPacket &packet) -> void;
+    auto handle_open_connection_req_1(const AddressInfo &addrInfo, const OpenConnectionRequest1Packet &packet) -> void;
+    auto handle_open_connection_req_2(const AddressInfo &addrInfo, const OpenConnectionRequest2Packet &packet) -> void;
+    auto handle_connection_request(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &packet) -> void;
     auto decode_frame_set(const UDPPacket &packet) -> std::vector<FrameSetPacket::Frame>;
+    auto handle_packet(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &packet) -> void;
 };
 
 } // namespace Firework::Networking
