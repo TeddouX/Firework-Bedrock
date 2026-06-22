@@ -23,6 +23,8 @@ RakNetServer::RakNetServer(const ServerProperties &serverProperties, std::shared
     _guid = rng();
     
     properties_to_string();
+
+    _startTime = std::chrono::steady_clock::now();
 }
 
 auto RakNetServer::properties_to_string() -> const std::string & {
@@ -64,8 +66,8 @@ auto RakNetServer::handle_packet(const UDPPacket &packet) -> void {
     if (id & static_cast<uint8_t>(RakNetPacketType::FRAME_SET) && id < 0x90) {
         LOGGER.debug("Received frame set packet");
 
-        std::vector<FrameSetPacket::Frame> frames = decode_frame_set(packet);
-        for (FrameSetPacket::Frame frame : frames)
+        std::vector<RakNetFrame> frames = decode_frame_set(packet);
+        for (RakNetFrame frame : frames)
             handle_packet(packet.addrInfo(), frame.payload);
     
         return;
@@ -120,11 +122,29 @@ auto RakNetServer::handle_open_connection_req_2(const AddressInfo &addrInfo, con
     LOGGER.debug("Sent ConnectionReply2.");
 }
 
-auto RakNetServer::handle_connection_request(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &packet) -> void {
+auto RakNetServer::handle_connection_request(const AddressInfo &addrInfo, const ConnectionRequestPacket &packet) -> void {
+    auto it = _openConnections.find(addrInfo);
+    if (it == _openConnections.end())
+        return;
 
+    ConnectionRequestAcceptedPacket replyPacket{};
+    replyPacket.clientAddress = addrInfo;
+    replyPacket.connectionRequestTime = packet.sendTime;
+
+    std::chrono::steady_clock::duration timeDiff = std::chrono::steady_clock::now() - _startTime;
+    replyPacket.sendTime = std::chrono::duration_cast<std::chrono::milliseconds>(timeDiff).count();
+
+    RakNetPartialFrame partialFrame{};
+    partialFrame.reliability = RakNetFrame::Reliability::ReliableOrdered;
+    partialFrame.payload = replyPacket.encode();
+    partialFrame.orderChannel = FIREWORK_RAKNET_RESERVED_CHANNEL;
+
+    send_in_frame_set(it->second, partialFrame);
+
+    LOGGER.debug("Sent ConnectionRequestAccepted.");
 }
 
-auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<FrameSetPacket::Frame> {
+auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<RakNetFrame> {
     auto frameSetPacket = FrameSetPacket::from_packet(packet.data());
     if (!frameSetPacket) {
         LOGGER.warn("Failed to decode frame set packet.");
@@ -140,9 +160,9 @@ auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<Fram
     
     connection.update_sequence(frameSetPacket->sequence_number());
 
-    std::vector<FrameSetPacket::Frame> packets;
-    for (FrameSetPacket::Frame frame : frameSetPacket->frames()) {
-        std::vector<FrameSetPacket::Frame> frames = connection.update_frame_level_data(frame); 
+    std::vector<RakNetFrame> packets;
+    for (RakNetFrame frame : frameSetPacket->frames()) {
+        std::vector<RakNetFrame> frames = connection.update_frame_level_data(frame); 
         if (frames.empty())
             continue;
 
@@ -152,8 +172,26 @@ auto RakNetServer::decode_frame_set(const UDPPacket &packet) -> std::vector<Fram
     return packets;
 }
 
+auto RakNetServer::send_in_frame_set(RakNetConnection &connection, RakNetPartialFrame &partialFrame) -> bool {
+    std::vector<RakNetPartialFrame> partialFrames{{std::move(partialFrame)}};
+    std::vector<FrameSetPacket> frameSets = FrameSetPacket::from_partial_frames(partialFrames, connection);
+    
+    std::vector<std::vector<uint8_t>> packets{};
+    for (const FrameSetPacket &frameSet : frameSets)
+        packets.push_back(frameSet.encode());
+
+    if (_udpServer->send_all(packets, connection.address)) {
+        for (const FrameSetPacket &frameSet : frameSets)
+            connection.on_frame_set_sent(frameSet);
+
+        return true;
+    }
+
+    return false;
+}
+
 auto RakNetServer::update_connections() -> void {
-    // Send ACKs and NACKs
+    // TODO: Send ACKs and NACKs
 }
 
 auto RakNetServer::handle_packet(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &data) -> void {
@@ -192,7 +230,10 @@ auto RakNetServer::handle_packet(const AddressInfo &addrInfo, const std::vector<
         }
 
         case CONNECTION_REQUEST: {
-            handle_connection_request(addrInfo, data);
+            auto packet = ConnectionRequestPacket::from_packet(data);
+            if (!packet) return;
+
+            handle_connection_request(addrInfo, *packet);
             return;
         }
     }

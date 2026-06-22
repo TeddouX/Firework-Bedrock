@@ -33,7 +33,7 @@ auto UnconnectedPingPacket::from_packet(const std::vector<std::uint8_t> &packet)
     return finalPacket;
 }
 
-auto UnconnectedPongPacket::encode() -> std::vector<std::uint8_t> {
+auto UnconnectedPongPacket::encode() const -> std::vector<std::uint8_t> {
     const size_t packetSizeBytes = 1
         + sizeof(echoedTime)
         + sizeof(serverGUID)
@@ -75,7 +75,7 @@ auto OpenConnectionRequest1Packet::from_packet(const std::vector<std::uint8_t> &
     return finalPacket;
 }
 
-auto OpenConnectionReply1Packet::encode() -> std::vector<std::uint8_t> {
+auto OpenConnectionReply1Packet::encode() const -> std::vector<std::uint8_t> {
     BinaryWriter writer{OpenConnectionReply1Packet::SIZE};
 
     writer.write_packet_type(RakNetPacketType::OPEN_CONNECTION_REP_1);
@@ -88,7 +88,6 @@ auto OpenConnectionReply1Packet::encode() -> std::vector<std::uint8_t> {
 }
 
 auto OpenConnectionRequest2Packet::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<OpenConnectionRequest2Packet> {
-    LOGGER.debug("{} {}", packet.size(), OpenConnectionRequest2Packet::SIZE);
     if (packet.size() != OpenConnectionRequest2Packet::SIZE)
         return std::nullopt;
 
@@ -106,12 +105,47 @@ auto OpenConnectionRequest2Packet::from_packet(const std::vector<std::uint8_t> &
     std::copy(serverAddress.begin(), serverAddress.begin(), finalPacket.serverAddress.end());
 
     finalPacket.MTU = network_to_host(*reader.read_integral<std::uint16_t>());
-    finalPacket.clientGUI = network_to_host(*reader.read_integral<std::uint64_t>());
+    finalPacket.clientGUID = network_to_host(*reader.read_integral<std::uint64_t>());
 
     return finalPacket;
 }
 
-auto OpenConnectionReply2Packet::encode() -> std::vector<std::uint8_t> {
+auto ConnectionRequestPacket::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<ConnectionRequestPacket> {
+    if (packet.size() != ConnectionRequestPacket::SIZE)
+        return std::nullopt;
+    
+    BinaryReader reader{packet};
+
+    RakNetPacketType packetType = *reader.read_packet_type();
+    if (packetType != RakNetPacketType::CONNECTION_REQUEST)
+        return std::nullopt;
+
+    ConnectionRequestPacket finalPacket{};
+
+    finalPacket.clientGUID = network_to_host(*reader.read_integral<std::uint64_t>());
+    finalPacket.sendTime = network_to_host(*reader.read_integral<std::uint64_t>());
+
+    return finalPacket;
+}
+
+auto ConnectionRequestAcceptedPacket::encode() const -> std::vector<std::uint8_t> {
+    BinaryWriter writer{ConnectionRequestAcceptedPacket::SIZE};
+
+    writer.write_packet_type(RakNetPacketType::CONNECTION_REQUEST_ACCEPTED);
+    writer.write_bytes(ip_to_bytes(clientAddress));
+    writer.write_integral((std::uint16_t)0);
+
+    AddressInfo addrInfo{"255.255.255.255", 19132, AddressFamily::IPv4};
+    for (int i = 0; i < 10; i++);
+        writer.write_bytes(ip_to_bytes(addrInfo));
+
+    writer.write_integral(connectionRequestTime);
+    writer.write_integral(sendTime);
+
+    return writer.get_data();
+}
+ 
+auto OpenConnectionReply2Packet::encode() const -> std::vector<std::uint8_t> {
     BinaryWriter writer{SIZE};
 
     writer.write_packet_type(RakNetPacketType::OPEN_CONNECTION_REP_2);
@@ -124,132 +158,7 @@ auto OpenConnectionReply2Packet::encode() -> std::vector<std::uint8_t> {
     return writer.get_data();
 }
 
-auto FrameSetPacket::is_reliable(Reliability reliability) -> bool {
-    switch (reliability) {
-        using enum Reliability;
-        case Reliable:
-        case ReliableOrdered:
-        case ReliableSequenced:
-        case ReliableWithAckReceipt:
-        case ReliableOrderedWithAckReceipt:
-            return true;
-        
-        default: return false;
-    }
-}
 
-auto FrameSetPacket::is_sequenced(Reliability reliability) -> bool {
-    switch (reliability) {
-        using enum Reliability;
-        case UnreliableSequenced:
-        case ReliableSequenced:
-            return true;
-        
-        default: return false;
-    }
-}
-
-auto FrameSetPacket::is_ordered(Reliability reliability) -> bool {
-    switch (reliability) {
-        using enum Reliability;
-        case UnreliableSequenced:
-        case ReliableOrdered:
-        case ReliableSequenced:
-        case ReliableOrderedWithAckReceipt:
-            return true;
-        
-        default: return false;
-    }
-}
-
-auto FrameSetPacket::from_packet(const std::vector<std::uint8_t> &data) -> std::optional<FrameSetPacket> {
-    BinaryReader reader{data};
-
-    // Skip ID
-    if (!reader.advance(1))
-        return std::nullopt;
-
-    auto sequenceNumberOpt = reader.read_integral<uint24_t>(); 
-    if (!sequenceNumberOpt) return std::nullopt;
-    uint24_t sequenceNumber = *sequenceNumberOpt;
-
-    FrameSetPacket result{};
-    result._sequenceNumber = sequenceNumber;
-
-    // Read all frames
-    while (reader.remaining() > 0) {
-        Frame frame{};
-
-        auto flagsOpt = reader.read_u8();
-        if (!sequenceNumberOpt) return std::nullopt;
-        std::uint8_t flags = *flagsOpt;
-        
-        std::uint8_t reliabilityBits = (flags & 0b11100000) >> 5;
-        frame.reliability = static_cast<Reliability>(reliabilityBits);
-        frame.isFragmented = flags & 0b00010000;
-
-        frame.isReliable  = is_reliable(frame.reliability);
-        frame.isSequenced = is_sequenced(frame.reliability);
-        frame.isOrdered   = is_ordered(frame.reliability);
-
-        auto lengthBitsOpt = reader.read_integral<std::uint16_t>();
-        if (!lengthBitsOpt) return std::nullopt;
-        frame.payloadSizeBits = network_to_host(*lengthBitsOpt);
-
-        if (frame.isReliable) {
-            frame.reliableFrameIndex = reader.read_integral<uint24_t>();
-            if (!frame.reliableFrameIndex) return std::nullopt;
-        }
-
-        if (frame.isSequenced) {
-            frame.sequencedFrameIndex = reader.read_integral<uint24_t>();
-            if (!frame.sequencedFrameIndex) return std::nullopt;
-        }
-
-        if (frame.isOrdered) {
-            frame.orderedFrameIndex = reader.read_integral<uint24_t>();
-            if (!frame.orderedFrameIndex) return std::nullopt;
-
-            frame.orderChannel = reader.read_u8();
-            if (!frame.orderChannel) return std::nullopt;
-        }
-
-        if (frame.isFragmented) {
-            frame.compoundSize = reader.read_integral<std::int32_t>();
-            if (!frame.compoundSize) return std::nullopt;
-            
-            frame.compoundID = reader.read_integral<std::int16_t>();
-            if (!frame.compoundID) return std::nullopt;
-            
-            frame.fragmentIdx = reader.read_integral<std::int32_t>();
-            if (!frame.fragmentIdx) return std::nullopt;
-
-            frame.compoundSize = network_to_host(*frame.compoundSize);
-            frame.compoundID   = network_to_host(*frame.compoundID);
-            frame.fragmentIdx  = network_to_host(*frame.fragmentIdx);
-        }
-        
-        // Equivalent to ceil(frame.payloadSizeBits / 8)
-        std::size_t payloadSize = (static_cast<std::size_t>(frame.payloadSizeBits) + 7) / 8;
-        auto payload = reader.read_bytes(payloadSize);
-        if (!payload) return std::nullopt;
-        
-        frame.payload.assign(payload->begin(), payload->end());
-        
-        result._frames.push_back(std::move(frame));
-    }
-
-    return result;
-}
-
-FrameSetPacket::FrameSetPacket(Reliability reliability, const std::vector<const std::vector<std::uint8_t> *> &packets, size_t packetsTotalSize) {
-    // TODO: implement FrameSetPacket constructor
-}
-
-// Returns each packet that needs to be sent in case of splitting if data is too big
-auto FrameSetPacket::encode() -> std::vector<std::vector<std::uint8_t>> {
-    return {};
-}
 
 auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
     std::uint16_t port = addrInfo.port();
@@ -270,7 +179,7 @@ auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
 
     port = network_to_host(port);
 
-    BinaryWriter writer{IPv6 ? 29ULL : 7ULL};
+    BinaryWriter writer{IPv6 ? 29uz : 7uz};
     
     writer.write_u8(static_cast<std::uint8_t>(family));
 

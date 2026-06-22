@@ -8,6 +8,8 @@
 #include "../address.hpp"
 #include "../udp_packet.hpp"
 #include "../uint24.hpp"
+#include "raknet_connection.hpp"
+#include "raknet_frame_set_packet.hpp"
 
 namespace Firework::Networking
 {
@@ -37,6 +39,10 @@ enum class RakNetPacketType : std::uint8_t {
     NACK                        = 0xA0,
 };
 
+struct IClientBoundPacket {
+    virtual auto encode() const -> std::vector<std::uint8_t> = 0;
+};
+
 // ID: uint8
 // Time: uint64 little-endian
 // MAGIC
@@ -59,12 +65,12 @@ struct UnconnectedPingPacket {
 // MAGIC
 // Server ID String length: uint16 little-endian
 // Server ID String: string
-struct UnconnectedPongPacket {
+struct UnconnectedPongPacket: public IClientBoundPacket {
     std::int64_t echoedTime;
     std::uint64_t serverGUID;
     std::string serverIdString;
 
-    auto encode() -> std::vector<std::uint8_t>;
+    auto encode() const -> std::vector<std::uint8_t> override;
 };
 
 // ID: uint8
@@ -88,7 +94,7 @@ struct OpenConnectionRequest1Packet {
 // Use security: bool (false)
 // Cookie: int32 (unused)
 // MTU: uint16
-struct OpenConnectionReply1Packet {
+struct OpenConnectionReply1Packet: public IClientBoundPacket {
     std::uint64_t serverGUID;
     std::uint16_t MTU;
 
@@ -98,7 +104,7 @@ struct OpenConnectionReply1Packet {
         + sizeof(bool)
         + sizeof(MTU); 
 
-    auto encode() -> std::vector<std::uint8_t>;
+    auto encode() const -> std::vector<std::uint8_t> override;
 };
 
 // ID: uint8
@@ -111,13 +117,13 @@ struct OpenConnectionReply1Packet {
 struct OpenConnectionRequest2Packet {
     std::array<std::uint8_t, 7> serverAddress{};
     std::uint16_t MTU;
-    std::uint64_t clientGUI;
+    std::uint64_t clientGUID;
 
     static constexpr std::size_t SIZE = 1
         + RAKNET_MAGIC_SIZE
         + 7
         + sizeof(MTU)
-        + sizeof(clientGUI);
+        + sizeof(clientGUID);
 
     static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<OpenConnectionRequest2Packet>;
 };
@@ -128,7 +134,7 @@ struct OpenConnectionRequest2Packet {
 // Client Address: 7 IPv4 (supported), 29 IPv6 (unsupported)
 // MTU: uint16
 // Encryption enabled: boolean (false)
-struct OpenConnectionReply2Packet {
+struct OpenConnectionReply2Packet: public IClientBoundPacket {
     std::uint64_t serverGUID;
     AddressInfo clientAddress;
     std::uint16_t MTU;
@@ -140,75 +146,43 @@ struct OpenConnectionReply2Packet {
         + sizeof(MTU)
         + sizeof(bool);
 
-    auto encode() -> std::vector<std::uint8_t>;
+    auto encode() const -> std::vector<std::uint8_t> override;
 };
 
-class FrameSetPacket {
-public:
-    enum class Reliability : std::uint8_t {
-                                            // Is reliable      Is ordered      Is sequenced
-        Unreliable = 0,                     // False            False           False
-        UnreliableSequenced = 1,            // False            True            True
-        Reliable = 2,                       // True             False           False
-        ReliableOrdered = 3,                // True             True            False
-        ReliableSequenced = 4,              // True             True            True
-        UnreliableWithAckReceipt = 5,       // False            False           False
-        ReliableWithAckReceipt = 6,         // True             False           False
-        ReliableOrderedWithAckReceipt = 7,  // True             True            False
-    };
+// ID: uint8
+// Client GUID: uint64
+// Send Time: uint64
+// Use Security: bool (unused, false)
+struct ConnectionRequestPacket {
+    std::uint64_t clientGUID;
+    std::uint64_t sendTime;
 
-    static auto is_reliable(Reliability reliability) -> bool;
-    static auto is_sequenced(Reliability reliability) -> bool;
-    static auto is_ordered(Reliability reliability) -> bool;
+    static constexpr std::size_t SIZE = 1
+        + sizeof(clientGUID)
+        + sizeof(sendTime);
 
-    struct Frame {
-        Reliability reliability;
-        // Deduced from reliability
-        bool isReliable;
-        bool isSequenced;
-        bool isOrdered;
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<ConnectionRequestPacket>;
+};
 
-        bool isFragmented;
-        
-        std::uint16_t payloadSizeBits; // In bits
+// ID: uint8
+// Client Address: 7 IPv4 (supported), 29 IPv6 (unsupported)
+// System index: uint16 (unused)
+// Internal IDs: 10x addresses (total 70 bytes)
+// Connection request time: uint64
+// Send time: uint64
+struct ConnectionRequestAcceptedPacket: public IClientBoundPacket {
+    AddressInfo clientAddress;
+    std::uint64_t connectionRequestTime;
+    std::uint64_t sendTime;
 
-        // Only if reliable
-        std::optional<uint24_t> reliableFrameIndex;
-        // Only if sequenced
-        std::optional<uint24_t> sequencedFrameIndex;
-        
-        // Only if ordered
-        std::optional<uint24_t> orderedFrameIndex;
-        std::optional<uint8_t> orderChannel;
+    static constexpr std::size_t SIZE = 1
+        + 7
+        + sizeof(std::uint16_t)
+        + 10 * 7
+        + sizeof(connectionRequestTime)
+        + sizeof(sendTime);
 
-        // Only if isFragmented
-        std::optional<std::int32_t> compoundSize;
-        std::optional<std::int16_t> compoundID;
-        std::optional<std::int32_t> fragmentIdx;
-
-        std::vector<std::uint8_t> payload;
-    };
-
-    static auto from_packet(const std::vector<std::uint8_t> &data) -> std::optional<FrameSetPacket>;
-
-    FrameSetPacket(Reliability reliability, const std::vector<const std::vector<std::uint8_t> *> &packets, size_t packetsTotalSize);
-
-    // Returns each packet that needs to be sent in case of splitting if data is too big
-    auto encode() -> std::vector<std::vector<std::uint8_t>>;
-
-    auto frames() const -> const std::vector<Frame> & { return _frames; } 
-    auto sequence_number() const -> const uint24_t & { return _sequenceNumber; } 
-
-private:
-    // Unknown what these are used for, so we will just ignore them
-    // bool             _isPacketPair;
-    // bool             _isContinuousSend;
-    // bool             _needs_B_and_AS;
-
-    uint24_t            _sequenceNumber;
-    std::vector<Frame>  _frames;
-
-    FrameSetPacket() = default;
+    auto encode() const -> std::vector<std::uint8_t> override;
 };
 
 } // namespace Firework::Networking

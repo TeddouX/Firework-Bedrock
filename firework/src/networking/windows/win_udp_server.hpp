@@ -20,6 +20,7 @@ public:
     auto stop() -> void override;
     auto try_pop_packet(UDPPacket &outPacket) -> bool override;
     auto send(const std::vector<std::uint8_t> &data, const AddressInfo &addrInfo) -> bool override;
+    auto send_all(const std::vector<std::vector<std::uint8_t>> &data, const AddressInfo &addrInfo) -> bool override;
 
 protected:
     auto receive_thread() -> void override;

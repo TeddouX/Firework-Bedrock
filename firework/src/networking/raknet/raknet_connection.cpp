@@ -28,8 +28,8 @@ auto RakNetConnection::update_sequence(uint24_t seq) -> void {
     }
 }
 
-auto RakNetConnection::update_frame_level_data(const FrameSetPacket::Frame &frame) -> std::vector<FrameSetPacket::Frame> {
-    std::vector<FrameSetPacket::Frame> frames;
+auto RakNetConnection::update_frame_level_data(const RakNetFrame &frame) -> std::vector<RakNetFrame> {
+    std::vector<RakNetFrame> frames;
 
     if (frame.isReliable && frame.reliableFrameIndex) {
         uint24_t idx = *frame.reliableFrameIndex;
@@ -69,7 +69,7 @@ auto RakNetConnection::update_frame_level_data(const FrameSetPacket::Frame &fram
         if (channel >= static_cast<std::uint32_t>(MAX_ORDERING_CHANNELS))
             return {};
 
-        OrderingChannel &orderingChannel = orderingChannels[static_cast<std::uint32_t>(channel)];
+        OrderingChannel &orderingChannel = incomingOrderingChannels[static_cast<std::uint32_t>(channel)];
         if (idx == orderingChannel.expectedOrderIndex) {
             frames.push_back(frame);
 
@@ -100,6 +100,10 @@ auto RakNetConnection::update_frame_level_data(const FrameSetPacket::Frame &fram
         frames.push_back(frame);
 
     return frames;
+}
+
+auto RakNetConnection::on_frame_set_sent(const FrameSetPacket &frameSet) -> void {
+
 }
 
 } // namespace Firework::Networking

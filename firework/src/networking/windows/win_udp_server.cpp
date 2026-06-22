@@ -172,4 +172,14 @@ auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const AddressInfo
     return true;
 }
 
+auto WinUDPServer::send_all(const std::vector<std::vector<std::uint8_t>> &packets, const AddressInfo &addrInfo) -> bool {
+    for (const std::vector<std::uint8_t> &packet : packets) {
+        if (!send(packet, addrInfo))
+            return false;
+    }
+    
+    return true;
+}
+
+
 } // namespace Firework::Networking
