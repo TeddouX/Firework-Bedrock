@@ -10,7 +10,7 @@
 #include "../utils/byte.hpp"
 #include "../../core/logger.hpp"
 
-namespace Firework::Networking
+namespace Firework::Networking::Socket
 {
 
 constexpr const std::uint8_t LOCAL_IP_BYTES[] = {127, 0, 0, 1};
@@ -133,7 +133,7 @@ auto WinUDPServer::receive_thread() -> void {
         std::uint16_t port = network_to_host(clientAddr.sin_port);
 
         std::vector<std::uint8_t> data{recvBuf, recvBuf + recvSize};
-        AddressInfo addrInfo{std::string(clientIP), port, AddressFamily::IPv4};
+        Address addrInfo{std::string(clientIP), port, AddressFamily::IPv4};
         UDPPacket packet{addrInfo, data};
 
         {
@@ -143,7 +143,7 @@ auto WinUDPServer::receive_thread() -> void {
     }
 }
 
-auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const AddressInfo &addrInfo) -> bool {
+auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const Address &addrInfo) -> bool {
     auto dataPtr = reinterpret_cast<const char *>(data.data());
     const size_t dataSize = data.size();
 
@@ -172,7 +172,7 @@ auto WinUDPServer::send(const std::vector<std::uint8_t> &data, const AddressInfo
     return true;
 }
 
-auto WinUDPServer::send_all(const std::vector<std::vector<std::uint8_t>> &packets, const AddressInfo &addrInfo) -> bool {
+auto WinUDPServer::send_all(const std::vector<std::vector<std::uint8_t>> &packets, const Address &addrInfo) -> bool {
     for (const std::vector<std::uint8_t> &packet : packets) {
         if (!send(packet, addrInfo))
             return false;
@@ -182,4 +182,4 @@ auto WinUDPServer::send_all(const std::vector<std::vector<std::uint8_t>> &packet
 }
 
 
-} // namespace Firework::Networking
+} // namespace Firework::Networking::Socket

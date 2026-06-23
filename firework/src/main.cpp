@@ -2,7 +2,7 @@
 #include <print>
 #include <numeric>
 
-#include "networking/windows/win_udp_server.hpp"
+#include "networking/socket/windows/win_udp_server.hpp"
 #include "networking/raknet/raknet_server.hpp"
 
 using namespace Firework;
@@ -10,7 +10,7 @@ using namespace Firework;
 inline static Firework::Logger LOGGER{"Firework", "Main"};
 
 int main() {
-    std::shared_ptr<Networking::UDPServer> serv = std::make_shared<Networking::WinUDPServer>();
+    std::shared_ptr<Networking::Socket::UDPServer> serv = std::make_shared<Networking::Socket::WinUDPServer>();
     if (!serv->create_socket(19132))
         return 0;
     
@@ -29,7 +29,7 @@ int main() {
 
     bool running = true;
     while (running) {
-        Networking::UDPPacket packet;
+        Networking::Socket::UDPPacket packet;
         while (serv->try_pop_packet(packet)) {
             LOGGER.info("Received from {} -> ", packet.addrInfo().to_string());
             for (int i = 0; i < packet.dataSize(); i++)

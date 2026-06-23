@@ -31,7 +31,7 @@ struct Connection {
     };
 
     // Misc
-    AddressInfo address;
+    Address address;
     bool isFullyConnected; // Past handshake, into Game Packet phase
     std::uint16_t MTU;
 

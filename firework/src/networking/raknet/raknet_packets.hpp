@@ -5,8 +5,8 @@
 #include <optional>
 #include <array>
 
+#include "../socket/udp_packet.hpp"
 #include "../address.hpp"
-#include "../udp_packet.hpp"
 #include "../uint24.hpp"
 #include "raknet_frame_set_packet.hpp"
 
@@ -131,7 +131,7 @@ struct OpenConnectionRequest2Packet {
 // Encryption enabled: boolean (false)
 struct OpenConnectionReply2Packet {
     std::uint64_t serverGUID;
-    AddressInfo clientAddress;
+    Address clientAddress;
     std::uint16_t MTU;
     
     static constexpr std::size_t SIZE = 1
@@ -167,7 +167,7 @@ struct ConnectionRequestPacket {
 // Connection request time: uint64
 // Send time: uint64
 struct ConnectionRequestAcceptedPacket {
-    AddressInfo clientAddress;
+    Address clientAddress;
     std::uint64_t connectionRequestTime;
     std::uint64_t sendTime;
 

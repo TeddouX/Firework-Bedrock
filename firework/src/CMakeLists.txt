@@ -21,13 +21,13 @@ target_sources(FireworkSource PRIVATE
     "networking/raknet/raknet_packets.hpp"
     "networking/raknet/raknet_server.cpp"
     "networking/raknet/raknet_server.hpp"
+    "networking/socket/udp_packet.hpp"
+    "networking/socket/udp_server.hpp"
     "networking/utils/byte.hpp"
     "networking/utils/ip.cpp"
     "networking/utils/ip.hpp"
     "networking/address.cpp"
     "networking/address.hpp"
-    "networking/udp_packet.hpp"
-    "networking/udp_server.hpp"
     "networking/uint24.hpp"
 
     "firework.hpp"
@@ -36,8 +36,8 @@ target_sources(FireworkSource PRIVATE
 
 if (WIN32)
     target_sources(FireworkSource PRIVATE
-        "networking/windows/win_udp_server.hpp"
-        "networking/windows/win_udp_server.cpp"
+        "networking/socket/windows/win_udp_server.hpp"
+        "networking/socket/windows/win_udp_server.cpp"
     )
 
     target_link_libraries(FireworkSource PUBLIC wsock32 ws2_32)

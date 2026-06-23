@@ -10,7 +10,7 @@
 namespace Firework::Networking::RakNet
 {
 
-auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t>;
+auto ip_to_bytes(const Address &addrInfo) -> std::vector<std::uint8_t>;
 
 auto records_from_packet(BinaryReader &reader) -> std::vector<Record>;
 auto encode_records(BinaryWriter &writer, const std::vector<Record> &records) -> void;
@@ -137,7 +137,7 @@ auto ConnectionRequestAcceptedPacket::encode() const -> std::vector<std::uint8_t
     writer.write_bytes(ip_to_bytes(clientAddress));
     writer.write_integral((std::uint16_t)0);
 
-    AddressInfo addrInfo{"255.255.255.255", 19132, AddressFamily::IPv4};
+    Address addrInfo{"255.255.255.255", 19132, AddressFamily::IPv4};
     std::vector<std::uint8_t> addrInfoBytes = ip_to_bytes(addrInfo);
     for (int i = 0; i < 10; i++)
         writer.write_bytes(addrInfoBytes);
@@ -238,7 +238,7 @@ auto NACKPacket::encode() const -> std::vector<std::uint8_t> {
 }
 
 
-auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
+auto ip_to_bytes(const Address &addrInfo) -> std::vector<std::uint8_t> {
     std::uint16_t port = addrInfo.port();
     const std::string &ipStr = addrInfo.ipAddr();
     AddressFamily family = addrInfo.family();

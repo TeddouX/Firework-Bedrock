@@ -15,7 +15,7 @@ auto build_ranges(const std::set<uint24_t> &nums) -> std::vector<Record>;
 
 
 
-Server::Server(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer) 
+Server::Server(const ServerProperties &serverProperties, std::shared_ptr<Socket::UDPServer> udpServer) 
     : _guid{0}
     , _serverProperties{serverProperties}
     , _cachedServerIDString{}
@@ -62,7 +62,7 @@ auto Server::update_server_properties(const ServerProperties &serverProperties) 
     _serverIDStringDirty = true;
 }
 
-auto Server::handle_packet(const UDPPacket &packet) -> void {
+auto Server::handle_packet(const Socket::UDPPacket &packet) -> void {
     if (packet.dataSize() < 1)
         return;
     
@@ -121,7 +121,7 @@ auto Server::update_connections() -> void {
     }
 }
 
-auto Server::handle_unconnected_ping(const AddressInfo &addrInfo, const UnconnectedPingPacket &packet) -> void {
+auto Server::handle_unconnected_ping(const Address &addrInfo, const UnconnectedPingPacket &packet) -> void {
     UnconnectedPongPacket replyPacket{};
     replyPacket.echoedTime = packet.time;
     replyPacket.serverGUID = _guid;
@@ -132,7 +132,7 @@ auto Server::handle_unconnected_ping(const AddressInfo &addrInfo, const Unconnec
     LOGGER.debug("Sent UnconnectedPong");
 }
 
-auto Server::handle_open_connection_req_1(const AddressInfo &addrInfo, const OpenConnectionRequest1Packet &packet) -> void {  
+auto Server::handle_open_connection_req_1(const Address &addrInfo, const OpenConnectionRequest1Packet &packet) -> void {  
     OpenConnectionReply1Packet replyPacket{};
     replyPacket.serverGUID = _guid;
     
@@ -152,7 +152,7 @@ auto Server::handle_open_connection_req_1(const AddressInfo &addrInfo, const Ope
     }
 }
 
-auto Server::handle_open_connection_req_2(const AddressInfo &addrInfo, const OpenConnectionRequest2Packet &packet) -> void {
+auto Server::handle_open_connection_req_2(const Address &addrInfo, const OpenConnectionRequest2Packet &packet) -> void {
     Connection *conn = get_connection(addrInfo);
     if (!conn) return;
 
@@ -166,7 +166,7 @@ auto Server::handle_open_connection_req_2(const AddressInfo &addrInfo, const Ope
     LOGGER.debug("Sent ConnectionReply2.");
 }
 
-auto Server::handle_connection_request(const AddressInfo &addrInfo, const ConnectionRequestPacket &packet) -> void {
+auto Server::handle_connection_request(const Address &addrInfo, const ConnectionRequestPacket &packet) -> void {
     Connection *conn = get_connection(addrInfo);
     if (!conn) return;
 
@@ -187,13 +187,13 @@ auto Server::handle_connection_request(const AddressInfo &addrInfo, const Connec
     LOGGER.debug("Sent ConnectionRequestAccepted.");
 }
 
-auto Server::handle_disconnect(const AddressInfo &addrInfo) -> void {
+auto Server::handle_disconnect(const Address &addrInfo) -> void {
     _openConnections.erase(addrInfo);
 
     LOGGER.debug("{} disconnected.", addrInfo.to_string());
 }
 
-auto Server::handle_ack(const AddressInfo &addrInfo, const ACKPacket &packet) -> void {
+auto Server::handle_ack(const Address &addrInfo, const ACKPacket &packet) -> void {
     Connection *conn = get_connection(addrInfo);
     if (!conn) return;
 
@@ -202,7 +202,7 @@ auto Server::handle_ack(const AddressInfo &addrInfo, const ACKPacket &packet) ->
     LOGGER.debug("Received ACK");
 }
 
-auto Server::handle_nack(const AddressInfo &addrInfo, const NACKPacket &packet) -> void {
+auto Server::handle_nack(const Address &addrInfo, const NACKPacket &packet) -> void {
     Connection *conn = get_connection(addrInfo);
     if (!conn) return;
 
@@ -212,7 +212,7 @@ auto Server::handle_nack(const AddressInfo &addrInfo, const NACKPacket &packet) 
     LOGGER.debug("Received NACK");
 }
 
-auto Server::decode_frame_set(const UDPPacket &packet) -> std::vector<Frame> {
+auto Server::decode_frame_set(const Socket::UDPPacket &packet) -> std::vector<Frame> {
     auto frameSetPacket = FrameSetPacket::from_packet(packet.data());
     if (!frameSetPacket) {
         LOGGER.warn("Failed to decode frame set packet.");
@@ -267,7 +267,7 @@ auto Server::send_frame_set(Connection &connection, const FrameSetPacket &frameS
     return _udpServer->send(packet, connection.address);
 }
 
-auto Server::handle_packet(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &data) -> void {
+auto Server::handle_packet(const Address &addrInfo, const std::vector<std::uint8_t> &data) -> void {
     if (data.size() < 1)
         return;
 
@@ -317,8 +317,7 @@ auto Server::handle_packet(const AddressInfo &addrInfo, const std::vector<std::u
         }
 
         case NEW_INCOMING_CONNECTION: {
-            // TODO
-
+            // Nothing to do here
             return;
         }
 
@@ -348,7 +347,7 @@ auto Server::handle_packet(const AddressInfo &addrInfo, const std::vector<std::u
     LOGGER.warn("Unhandled packet {:02X}", id);
 }
 
-auto Server::get_connection(const AddressInfo &addrInfo) -> Connection * {
+auto Server::get_connection(const Address &addrInfo) -> Connection * {
     auto it = _openConnections.find(addrInfo);
     if (it == _openConnections.end())
         return nullptr;
