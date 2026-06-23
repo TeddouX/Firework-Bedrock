@@ -38,10 +38,6 @@ enum class PacketType : std::uint8_t {
     NACK                        = 0xA0,
 };
 
-struct IClientBoundPacket {
-    virtual auto encode() const -> std::vector<std::uint8_t> = 0;
-};
-
 // ID: uint8
 // Time: uint64 little-endian
 // MAGIC
@@ -64,12 +60,12 @@ struct UnconnectedPingPacket {
 // MAGIC
 // Server ID String length: uint16 little-endian
 // Server ID String: string
-struct UnconnectedPongPacket: public IClientBoundPacket {
+struct UnconnectedPongPacket {
     std::int64_t echoedTime;
     std::uint64_t serverGUID;
     std::string serverIdString;
 
-    auto encode() const -> std::vector<std::uint8_t> override;
+    auto encode() const -> std::vector<std::uint8_t>;
 };
 
 // ID: uint8
@@ -93,7 +89,7 @@ struct OpenConnectionRequest1Packet {
 // Use security: bool (false)
 // Cookie: int32 (unused)
 // MTU: uint16
-struct OpenConnectionReply1Packet: public IClientBoundPacket {
+struct OpenConnectionReply1Packet {
     std::uint64_t serverGUID;
     std::uint16_t MTU;
 
@@ -103,7 +99,7 @@ struct OpenConnectionReply1Packet: public IClientBoundPacket {
         + sizeof(bool)
         + sizeof(MTU); 
 
-    auto encode() const -> std::vector<std::uint8_t> override;
+    auto encode() const -> std::vector<std::uint8_t>;
 };
 
 // ID: uint8
@@ -133,7 +129,7 @@ struct OpenConnectionRequest2Packet {
 // Client Address: 7 IPv4 (supported), 29 IPv6 (unsupported)
 // MTU: uint16
 // Encryption enabled: boolean (false)
-struct OpenConnectionReply2Packet: public IClientBoundPacket {
+struct OpenConnectionReply2Packet {
     std::uint64_t serverGUID;
     AddressInfo clientAddress;
     std::uint16_t MTU;
@@ -145,7 +141,7 @@ struct OpenConnectionReply2Packet: public IClientBoundPacket {
         + sizeof(MTU)
         + sizeof(bool);
 
-    auto encode() const -> std::vector<std::uint8_t> override;
+    auto encode() const -> std::vector<std::uint8_t>;
 };
 
 // ID: uint8
@@ -158,7 +154,8 @@ struct ConnectionRequestPacket {
 
     static constexpr std::size_t SIZE = 1
         + sizeof(clientGUID)
-        + sizeof(sendTime);
+        + sizeof(sendTime)
+        + sizeof(bool);
 
     static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<ConnectionRequestPacket>;
 };
@@ -169,7 +166,7 @@ struct ConnectionRequestPacket {
 // Internal IDs: 10x addresses (total 70 bytes)
 // Connection request time: uint64
 // Send time: uint64
-struct ConnectionRequestAcceptedPacket: public IClientBoundPacket {
+struct ConnectionRequestAcceptedPacket {
     AddressInfo clientAddress;
     std::uint64_t connectionRequestTime;
     std::uint64_t sendTime;
@@ -181,7 +178,42 @@ struct ConnectionRequestAcceptedPacket: public IClientBoundPacket {
         + sizeof(connectionRequestTime)
         + sizeof(sendTime);
 
-    auto encode() const -> std::vector<std::uint8_t> override;
+    auto encode() const -> std::vector<std::uint8_t>;
 };
+
+struct Record {
+    bool isSingle;
+
+    // If isSingle == false
+    std::optional<uint24_t> sequenceNumber;
+
+    // If isSingle == true
+    std::optional<uint24_t> startSequenceNumber;
+    std::optional<uint24_t> endSequenceNumber;
+
+    Record() = default;
+    Record(std::uint32_t rangeStart, std::uint32_t rangeEnd);
+};
+
+// ID: uint8
+// Record count: uint16
+// Records: Record[]
+struct ACKPacket {
+    std::vector<Record> records;
+
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<ACKPacket>;
+    auto encode() const -> std::vector<std::uint8_t>;
+};
+
+// ID: uint8
+// Record count: uint16
+// Records: Record[]
+struct NACKPacket {
+    std::vector<Record> records;
+
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<NACKPacket>;
+    auto encode() const -> std::vector<std::uint8_t>;
+};
+
 
 } // namespace Firework::Networking::RakNet

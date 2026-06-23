@@ -77,11 +77,14 @@ public:
     // Do not access the frames or data contained in them after this method was called
     static auto from_partial_frames(std::vector<PartialFrame> &frames, Connection &connection) -> std::vector<FrameSetPacket>;
     
-    auto encode() const -> std::vector<std::uint8_t>;
+    auto encode(Connection &connection) const -> std::vector<std::uint8_t>;
     
     auto frames() const -> const std::vector<Frame> & { return _frames; } 
-    auto sequence_number() const -> const uint24_t & { return _sequenceNumber; } 
+    auto sequence_number() const -> const uint24_t & { return _sequenceNumber; }
     
+    // Removes every unreliable frames, returns false if empty after operation
+    auto remove_unreliable_frames() -> bool;
+
 private:
     uint24_t            _sequenceNumber;
     std::vector<Frame>  _frames;

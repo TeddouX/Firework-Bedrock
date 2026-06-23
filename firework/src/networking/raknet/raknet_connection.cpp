@@ -102,8 +102,49 @@ auto Connection::update_frame_level_data(const Frame &frame) -> std::vector<Fram
     return frames;
 }
 
-auto Connection::on_frame_set_sent(const FrameSetPacket &frameSet) -> void {
+auto Connection::on_frame_set_sent(FrameSetPacket &frameSet) -> void {
+    if (!frameSet.remove_unreliable_frames())
+        return;
 
+    RetransmissionEntry entry{
+        .packet = std::move(frameSet),
+        .sentAt = std::chrono::steady_clock::now(),
+    };
+
+    sentFrameSetPackets.emplace(frameSet.sequence_number(), std::move(entry));
+}
+
+auto Connection::on_ack(const ACKPacket &ack) -> void {
+    for (const Record &record : ack.records) {
+        if (record.isSingle && record.sequenceNumber) {
+            sentFrameSetPackets.erase(*record.sequenceNumber);
+            continue;
+        }
+
+        if (!record.startSequenceNumber && !record.endSequenceNumber)
+            continue;
+
+        for (uint24_t i = *record.startSequenceNumber; i < *record.endSequenceNumber; i++)
+            sentFrameSetPackets.erase(i);
+    }
+}
+
+auto Connection::on_nack(const NACKPacket &nack) -> std::vector<FrameSetPacket> {
+    std::vector<FrameSetPacket> frames;
+    for (const Record &record : nack.records) {
+        if (record.isSingle && record.sequenceNumber) {
+            frames.push_back(sentFrameSetPackets.at(*record.sequenceNumber).packet);
+            continue;
+        }
+
+        if (!record.startSequenceNumber && !record.endSequenceNumber)
+            continue;
+
+        for (uint24_t i = *record.startSequenceNumber; i < *record.endSequenceNumber; i++)
+            frames.push_back(sentFrameSetPackets.at(i).packet);
+    }
+    
+    return frames;
 }
 
 } // namespace Firework::Networking::RakNet

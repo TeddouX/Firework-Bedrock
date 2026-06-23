@@ -250,8 +250,65 @@ auto FrameSetPacket::from_partial_frames(std::vector<PartialFrame> &packets, Con
     return frameSetPackets;
 }
 
-auto FrameSetPacket::encode() const -> std::vector<std::uint8_t> {
-    return {};
+auto FrameSetPacket::encode(Connection &connection) const -> std::vector<std::uint8_t> {
+    // As to not cause too many reallocations
+    BinaryWriter writer{connection.MTU};
+    
+    writer.write_packet_type(PacketType::FRAME_SET);
+    // See: https://minecraft.wiki/w/RakNet#Frame_Set_Packet
+    writer.write_integral(_sequenceNumber); 
+
+    for (const Frame &frame : _frames) {
+        std::uint8_t flags = 0;
+        flags |= static_cast<std::uint8_t>(frame.reliability) << 5;
+        flags |= static_cast<std::uint8_t>(frame.isFragmented) << 4;
+    
+        writer.write_u8(flags);
+        writer.write_integral(host_to_network(frame.payloadSizeBits));
+
+        if (frame.isReliable && frame.reliableFrameIndex)
+            writer.write_integral(*frame.reliableFrameIndex);
+    
+        if (frame.isSequenced && frame.sequencedFrameIndex)
+            writer.write_integral(*frame.sequencedFrameIndex);
+
+        if (frame.isOrdered && frame.orderedFrameIndex && frame.orderChannel) {
+            writer.write_integral(*frame.orderedFrameIndex);
+            writer.write_integral(*frame.orderChannel);
+        }
+
+        if (frame.isFragmented && frame.compoundSize && frame.compoundID && frame.fragmentIdx) {
+            writer.write_integral(*frame.compoundSize);
+            writer.write_integral(*frame.compoundID);
+            writer.write_integral(*frame.fragmentIdx);
+        }
+
+        writer.write_bytes(frame.payload);
+    }
+
+    std::size_t udpPacketSize = writer.get_data().size() + 28;
+    if (udpPacketSize > connection.MTU)
+        LOGGER.warn("Packet size exceeded MTU, might cause splitting ({} > {}), addr: {}", 
+            udpPacketSize,
+            connection.MTU,
+            connection.address.to_string()
+        );
+
+    return writer.get_data();
+}
+
+// Removes every unreliable frames, returns false if empty after operation
+auto FrameSetPacket::remove_unreliable_frames() -> bool {
+    for (std::size_t i = 0; i < _frames.size(); i++) {
+        const Frame &frame = _frames[i];
+        // Swap and pop, better time complexity :)
+        if (!frame.isReliable) {
+            _frames[i] = std::move(_frames.back());
+            _frames.pop_back();
+        }
+    }
+
+    return !_frames.empty();
 }
 
 } // namespace Firework::Networking::RakNet

@@ -15,7 +15,9 @@ namespace Firework::Networking::RakNet
 {
     
 struct Connection {
-    static constexpr std::chrono::duration ACK_FLUSH_INTERVAL = std::chrono::milliseconds(10);
+    static constexpr std::chrono::duration RETRANSMISSION_TIMEOUT = std::chrono::milliseconds(100);
+    static constexpr std::chrono::duration ACK_FLUSH_INTERVAL = std::chrono::milliseconds(50);
+    static constexpr std::size_t MAX_PENDING_ACKS_PACKETS = 16;
     static constexpr std::size_t MAX_ORDERING_CHANNELS = 32;
 
     struct OrderingChannel {
@@ -23,7 +25,15 @@ struct Connection {
         std::map<uint24_t, Frame> outOfOrderBuffer{};
     };
 
+    struct RetransmissionEntry {
+        FrameSetPacket packet;
+        std::chrono::steady_clock::time_point sentAt;
+    };
+
+    // Misc
     AddressInfo address;
+    bool isFullyConnected; // Past handshake, into Game Packet phase
+    std::uint16_t MTU;
 
     // -------------
     // Outgoing side
@@ -31,7 +41,7 @@ struct Connection {
     uint24_t nextSequenceNumber{0u}; // Next sequence number to assign to an outgoing datagram
     // sequence# -> raw datagram bytes, for retransmission
     // Raw datagram bytes are cleared at each ACK received by the client
-    std::unordered_map<uint24_t, FrameSetPacket> sentFrameSetPackets{};
+    std::unordered_map<uint24_t, RetransmissionEntry> sentFrameSetPackets{};
     
     // Frame level data
     std::uint16_t nextReliableFrameIdx{0u};
@@ -58,11 +68,10 @@ struct Connection {
 
     std::array<OrderingChannel, MAX_ORDERING_CHANNELS> incomingOrderingChannels{};
 
-    // Misc
-    bool isFullyConnected; // Past handshake, into Game Packet phase
-    std::uint16_t MTU;
+    auto on_frame_set_sent(FrameSetPacket &frameSet) -> void;
 
-    auto on_frame_set_sent(const FrameSetPacket &frameSet) -> void;
+    auto on_ack(const ACKPacket &ack) -> void;
+    auto on_nack(const NACKPacket &nack) -> std::vector<FrameSetPacket>;
 
     // Example behaviour:
     // received 0: expectedSequenceNumber = 1

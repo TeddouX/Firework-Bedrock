@@ -60,11 +60,18 @@ private:
     auto handle_open_connection_req_1(const AddressInfo &addrInfo, const OpenConnectionRequest1Packet &packet) -> void;
     auto handle_open_connection_req_2(const AddressInfo &addrInfo, const OpenConnectionRequest2Packet &packet) -> void;
     auto handle_connection_request(const AddressInfo &addrInfo, const ConnectionRequestPacket &packet) -> void;
-    
+    auto handle_ack(const AddressInfo &addrInfo, const ACKPacket &packet) -> void;
+    auto handle_nack(const AddressInfo &addrInfo, const NACKPacket &packet) -> void;
+    auto handle_disconnect(const AddressInfo &addrInfo) -> void;
+
     auto decode_frame_set(const UDPPacket &packet) -> std::vector<Frame>;
     auto send_in_frame_set(Connection &connection, PartialFrame &partialFrame) -> bool;
+    auto send_frame_sets(Connection &connection, std::vector<FrameSetPacket> &frameSets) -> bool;
+    auto send_frame_set(Connection &connection, const FrameSetPacket &frameSet) -> bool;
 
     auto handle_packet(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &packet) -> void;
+
+    auto get_connection(const AddressInfo &addrInfo) -> Connection *;
 };
 
 } // namespace Firework::Networking::RakNet

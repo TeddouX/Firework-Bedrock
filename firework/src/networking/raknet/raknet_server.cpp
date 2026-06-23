@@ -11,6 +11,10 @@
 namespace Firework::Networking::RakNet
 {
     
+auto build_ranges(const std::set<uint24_t> &nums) -> std::vector<Record>;
+
+
+
 Server::Server(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer) 
     : _guid{0}
     , _serverProperties{serverProperties}
@@ -76,6 +80,47 @@ auto Server::handle_packet(const UDPPacket &packet) -> void {
     handle_packet(packet.addrInfo(), packet.data());
 }
 
+auto Server::update_connections() -> void {
+    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    for (auto &[_, conn]: _openConnections) {
+        if (!conn.missingSequenceNumbers.empty()) {
+            NACKPacket packet{};
+            packet.records = build_ranges(conn.missingSequenceNumbers);
+
+            _udpServer->send(packet.encode(), conn.address);
+            
+            conn.missingSequenceNumbers.clear();
+
+            LOGGER.debug("Sent NACK");
+        }
+
+        if (!conn.pendingACKsequenceNumbers.empty()) {
+            std::chrono::nanoseconds ackInterval = now - conn.lastOutgoingACKTime;
+
+            if (ackInterval > Connection::ACK_FLUSH_INTERVAL || 
+                conn.pendingACKsequenceNumbers.size() >= Connection::MAX_PENDING_ACKS_PACKETS
+            ) {
+                ACKPacket packet{};
+                packet.records = build_ranges(conn.pendingACKsequenceNumbers);
+
+                conn.lastOutgoingACKTime = now;
+                conn.pendingACKsequenceNumbers.clear();
+
+                _udpServer->send(packet.encode(), conn.address);
+                LOGGER.debug("Sent ACK");
+            }
+        }
+
+        for (auto &[_, retransmissionEntry] : conn.sentFrameSetPackets) {
+            std::chrono::nanoseconds retransmissionInterval = now - retransmissionEntry.sentAt;
+            if (retransmissionInterval > Connection::RETRANSMISSION_TIMEOUT) {
+                send_frame_set(conn, retransmissionEntry.packet);
+                retransmissionEntry.sentAt = now;
+            }
+        }
+    }
+}
+
 auto Server::handle_unconnected_ping(const AddressInfo &addrInfo, const UnconnectedPingPacket &packet) -> void {
     UnconnectedPongPacket replyPacket{};
     replyPacket.echoedTime = packet.time;
@@ -108,14 +153,13 @@ auto Server::handle_open_connection_req_1(const AddressInfo &addrInfo, const Ope
 }
 
 auto Server::handle_open_connection_req_2(const AddressInfo &addrInfo, const OpenConnectionRequest2Packet &packet) -> void {
-    auto it = _openConnections.find(addrInfo);
-    if (it == _openConnections.end())
-        return;
+    Connection *conn = get_connection(addrInfo);
+    if (!conn) return;
 
     OpenConnectionReply2Packet replyPacket{};
     replyPacket.serverGUID = _guid;
     replyPacket.clientAddress = addrInfo;
-    replyPacket.MTU = it->second.MTU;
+    replyPacket.MTU = conn->MTU;
 
     _udpServer->send(replyPacket.encode(), addrInfo);
 
@@ -123,9 +167,8 @@ auto Server::handle_open_connection_req_2(const AddressInfo &addrInfo, const Ope
 }
 
 auto Server::handle_connection_request(const AddressInfo &addrInfo, const ConnectionRequestPacket &packet) -> void {
-    auto it = _openConnections.find(addrInfo);
-    if (it == _openConnections.end())
-        return;
+    Connection *conn = get_connection(addrInfo);
+    if (!conn) return;
 
     ConnectionRequestAcceptedPacket replyPacket{};
     replyPacket.clientAddress = addrInfo;
@@ -139,9 +182,34 @@ auto Server::handle_connection_request(const AddressInfo &addrInfo, const Connec
     partialFrame.payload = replyPacket.encode();
     partialFrame.orderChannel = FIREWORK_RAKNET_RESERVED_CHANNEL;
 
-    send_in_frame_set(it->second, partialFrame);
+    send_in_frame_set(*conn, partialFrame);
 
     LOGGER.debug("Sent ConnectionRequestAccepted.");
+}
+
+auto Server::handle_disconnect(const AddressInfo &addrInfo) -> void {
+    _openConnections.erase(addrInfo);
+
+    LOGGER.debug("{} disconnected.", addrInfo.to_string());
+}
+
+auto Server::handle_ack(const AddressInfo &addrInfo, const ACKPacket &packet) -> void {
+    Connection *conn = get_connection(addrInfo);
+    if (!conn) return;
+
+    conn->on_ack(packet);
+
+    LOGGER.debug("Received ACK");
+}
+
+auto Server::handle_nack(const AddressInfo &addrInfo, const NACKPacket &packet) -> void {
+    Connection *conn = get_connection(addrInfo);
+    if (!conn) return;
+
+    std::vector<FrameSetPacket> frameSets = conn->on_nack(packet);
+    send_frame_sets(*conn, frameSets);
+
+    LOGGER.debug("Received NACK");
 }
 
 auto Server::decode_frame_set(const UDPPacket &packet) -> std::vector<Frame> {
@@ -176,12 +244,16 @@ auto Server::send_in_frame_set(Connection &connection, PartialFrame &partialFram
     std::vector<PartialFrame> partialFrames{{std::move(partialFrame)}};
     std::vector<FrameSetPacket> frameSets = FrameSetPacket::from_partial_frames(partialFrames, connection);
     
+    return send_frame_sets(connection, frameSets);
+}
+
+auto Server::send_frame_sets(Connection &connection, std::vector<FrameSetPacket> &frameSets) -> bool {
     std::vector<std::vector<uint8_t>> packets{};
     for (const FrameSetPacket &frameSet : frameSets)
-        packets.push_back(frameSet.encode());
+        packets.push_back(frameSet.encode(connection));
 
     if (_udpServer->send_all(packets, connection.address)) {
-        for (const FrameSetPacket &frameSet : frameSets)
+        for (FrameSetPacket &frameSet : frameSets)
             connection.on_frame_set_sent(frameSet);
 
         return true;
@@ -190,8 +262,9 @@ auto Server::send_in_frame_set(Connection &connection, PartialFrame &partialFram
     return false;
 }
 
-auto Server::update_connections() -> void {
-    // TODO: Send ACKs and NACKs
+auto Server::send_frame_set(Connection &connection, const FrameSetPacket &frameSet) -> bool {
+    std::vector<uint8_t> packet = frameSet.encode(connection);
+    return _udpServer->send(packet, connection.address);
 }
 
 auto Server::handle_packet(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &data) -> void {
@@ -236,9 +309,89 @@ auto Server::handle_packet(const AddressInfo &addrInfo, const std::vector<std::u
             handle_connection_request(addrInfo, *packet);
             return;
         }
+
+        case CONNECTED_PING: {
+            // TODO
+            
+            return;
+        }
+
+        case NEW_INCOMING_CONNECTION: {
+            // TODO
+
+            return;
+        }
+
+        case ACK: {
+            auto packet = ACKPacket::from_packet(data);
+            if (!packet) return;
+
+            handle_ack(addrInfo, *packet);
+            return;
+        }
+
+        case NACK: {
+            auto packet = NACKPacket::from_packet(data);
+            if (!packet) return;
+            
+            handle_nack(addrInfo, *packet);
+            return;
+        }
+
+        case DISCONNECT: {
+            handle_disconnect(addrInfo);
+
+            return;
+        }
     }
 
     LOGGER.warn("Unhandled packet {:02X}", id);
+}
+
+auto Server::get_connection(const AddressInfo &addrInfo) -> Connection * {
+    auto it = _openConnections.find(addrInfo);
+    if (it == _openConnections.end())
+        return nullptr;
+
+    return &it->second;
+}
+
+
+
+auto build_ranges(const std::set<uint24_t> &nums) -> std::vector<Record> {
+    std::vector<Record> records{};
+    records.reserve(nums.size());
+
+    std::uint32_t rangeStart = UINT32_MAX;
+    std::uint32_t rangeEnd = UINT32_MAX;
+    for (uint24_t num : nums) {
+        if (rangeStart == UINT32_MAX) {
+            rangeStart = num;
+            rangeEnd = num;
+            continue;
+        }
+
+        if ((rangeEnd + 1) == static_cast<std::uint32_t>(num)) {
+            rangeEnd++;
+            continue;
+        }
+        
+        records.emplace_back(rangeStart, rangeEnd);
+        
+        rangeStart = UINT32_MAX;
+        rangeEnd = UINT32_MAX;
+    }
+
+    if (rangeStart != UINT32_MAX) {
+        if (rangeEnd != UINT32_MAX) {
+            records.emplace_back(rangeStart, rangeEnd);
+            return records;
+        }
+
+        records.emplace_back(rangeStart, rangeStart);
+    }
+
+    return records;
 }
 
 } // namespace Firework::Networking::RakNet

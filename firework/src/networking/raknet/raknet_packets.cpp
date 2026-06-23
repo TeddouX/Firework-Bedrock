@@ -12,6 +12,8 @@ namespace Firework::Networking::RakNet
 
 auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t>;
 
+auto records_from_packet(BinaryReader &reader) -> std::vector<Record>;
+auto encode_records(BinaryWriter &writer, const std::vector<Record> &records) -> void;
 
 
 auto UnconnectedPingPacket::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<UnconnectedPingPacket> {
@@ -136,8 +138,9 @@ auto ConnectionRequestAcceptedPacket::encode() const -> std::vector<std::uint8_t
     writer.write_integral((std::uint16_t)0);
 
     AddressInfo addrInfo{"255.255.255.255", 19132, AddressFamily::IPv4};
-    for (int i = 0; i < 10; i++);
-        writer.write_bytes(ip_to_bytes(addrInfo));
+    std::vector<std::uint8_t> addrInfoBytes = ip_to_bytes(addrInfo);
+    for (int i = 0; i < 10; i++)
+        writer.write_bytes(addrInfoBytes);
 
     writer.write_integral(connectionRequestTime);
     writer.write_integral(sendTime);
@@ -158,6 +161,81 @@ auto OpenConnectionReply2Packet::encode() const -> std::vector<std::uint8_t> {
     return writer.get_data();
 }
 
+Record::Record(std::uint32_t rangeStart, std::uint32_t rangeEnd) {
+    if (rangeStart == rangeEnd) {
+        isSingle = true;
+        sequenceNumber = rangeStart;
+    }
+    else {
+        isSingle = false;
+        startSequenceNumber = rangeStart;
+        endSequenceNumber = rangeEnd;
+    }
+}
+
+auto ACKPacket::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<ACKPacket> {
+    if (packet.empty())
+        return std::nullopt;
+
+    BinaryReader reader{packet};
+
+    PacketType packetType = *reader.read_packet_type();
+    if (packetType != PacketType::ACK)
+        return std::nullopt;
+
+    ACKPacket finalPacket{};
+    finalPacket.records = records_from_packet(reader);
+
+    if (finalPacket.records.empty())
+        return std::nullopt;
+
+    return std::move(finalPacket);
+}
+
+auto ACKPacket::encode() const -> std::vector<std::uint8_t> {
+    const size_t packetSizeBytes = 1
+        + sizeof(std::uint16_t)
+        + records.size();
+
+    BinaryWriter writer{packetSizeBytes};
+    writer.write_packet_type(PacketType::ACK);
+
+    encode_records(writer, records);
+
+    return writer.get_data();
+}
+
+auto NACKPacket::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<NACKPacket> {
+    if (packet.empty())
+        return std::nullopt;
+
+    BinaryReader reader{packet};
+
+    PacketType packetType = *reader.read_packet_type();
+    if (packetType != PacketType::NACK)
+        return std::nullopt;
+
+    NACKPacket finalPacket{};
+    finalPacket.records = records_from_packet(reader);
+
+    if (finalPacket.records.empty())
+        return std::nullopt;
+
+    return std::move(finalPacket);
+}
+
+auto NACKPacket::encode() const -> std::vector<std::uint8_t> {
+    const size_t packetSizeBytes = 1
+        + sizeof(std::uint16_t)
+        + records.size();
+
+    BinaryWriter writer{packetSizeBytes};
+    writer.write_packet_type(PacketType::NACK);
+
+    encode_records(writer, records);
+
+    return writer.get_data();
+}
 
 
 auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
@@ -196,5 +274,56 @@ auto ip_to_bytes(const AddressInfo &addrInfo) -> std::vector<std::uint8_t> {
 
     return writer.get_data();
 }
+
+auto records_from_packet(BinaryReader &reader) -> std::vector<Record> {
+    auto recordsCountOpt = reader.read_integral<std::uint16_t>();
+    if (!recordsCountOpt) return {};
+    std::uint16_t recordCount = network_to_host(*recordsCountOpt);
+
+    std::vector<Record> records{};
+    records.reserve(recordCount);
+
+    for (std::uint16_t i = 0; i < recordCount; i++) {
+        Record rec{};
+
+        auto isSingleOpt = reader.read_u8();
+        if (!isSingleOpt) return {};
+        if (*isSingleOpt > 1) return {};
+        
+        rec.isSingle = *isSingleOpt;
+
+        if (rec.isSingle) {
+            rec.sequenceNumber = reader.read_integral<uint24_t>();
+            if (!rec.sequenceNumber) return {};
+        }
+        else {
+            rec.startSequenceNumber = reader.read_integral<uint24_t>();
+            if (!rec.startSequenceNumber) return {};
+            rec.endSequenceNumber = reader.read_integral<uint24_t>();
+            if (!rec.endSequenceNumber) return {};
+        }
+        
+        records.push_back(rec);
+    }
+
+    return records;
+}
+
+auto encode_records(BinaryWriter &writer, const std::vector<Record> &records) -> void {
+    std::uint16_t recordsSize = static_cast<std::uint16_t>(records.size());
+    writer.write_integral(host_to_network(recordsSize));
+
+    for (const Record &record : records) {
+        writer.write_u8(record.isSingle);
+
+        if (record.isSingle && record.sequenceNumber)
+            writer.write_integral(*record.sequenceNumber);
+        else if (!record.isSingle && record.startSequenceNumber && record.endSequenceNumber) {
+            writer.write_integral(*record.startSequenceNumber);
+            writer.write_integral(*record.endSequenceNumber);
+        }
+    }
+}
+
 
 } // namespace Firework::Networking::RakNet
