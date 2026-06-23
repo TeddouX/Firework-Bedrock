@@ -1,5 +1,6 @@
 #include <memory>
 #include <print>
+#include <numeric>
 
 #include "networking/windows/win_udp_server.hpp"
 #include "networking/raknet/raknet_server.hpp"
@@ -15,7 +16,7 @@ int main() {
     
     serv->start();
 
-    Networking::ServerProperties serverProperties{};
+    Networking::RakNet::ServerProperties serverProperties{};
     serverProperties.motd1 = "Test Server";
     serverProperties.playerCount = 69;
     serverProperties.maxPlayerCount = 420;
@@ -24,7 +25,7 @@ int main() {
     serverProperties.portIPv4 = 19132;
     serverProperties.portIPv6 = 19133;
 
-    Networking::RakNetServer rakNetServer{serverProperties, serv};
+    Networking::RakNet::Server rakNetServer{serverProperties, serv};
 
     bool running = true;
     while (running) {

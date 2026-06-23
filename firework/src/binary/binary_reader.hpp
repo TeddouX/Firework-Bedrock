@@ -9,7 +9,7 @@
 namespace Firework
 {
 
-namespace Networking { enum class RakNetPacketType : std::uint8_t; }
+namespace Networking::RakNet { enum class PacketType : std::uint8_t; }
 
 template <IsIntegral _Integral>
 constexpr _Integral int_from_bytes(const std::uint8_t *value) {
@@ -28,7 +28,7 @@ public:
     template <IsIntegral T>
     auto read_integral() -> std::optional<T>;
     auto read_u8() -> std::optional<std::uint8_t>;
-    auto read_packet_type() -> std::optional<Networking::RakNetPacketType>;
+    auto read_packet_type() -> std::optional<Networking::RakNet::PacketType>;
     auto read_bytes(std::size_t nBytes) -> std::optional<std::span<const std::uint8_t>>;
 
     auto advance(std::size_t nBytes) -> bool;

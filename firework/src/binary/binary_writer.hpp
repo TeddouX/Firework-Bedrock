@@ -7,7 +7,7 @@
 namespace Firework
 {
 
-namespace Networking { enum class RakNetPacketType : std::uint8_t; }
+namespace Networking::RakNet { enum class PacketType : std::uint8_t; }
 
 template <IsIntegral _Integral>
 constexpr const std::uint8_t *get_int_bytes(const _Integral &value) {
@@ -23,7 +23,7 @@ public:
     template <IsIntegral T>
     auto write_integral(const T &val) -> void;
     auto write_u8(std::uint8_t val) -> void;
-    auto write_packet_type(Networking::RakNetPacketType packetType) -> void;
+    auto write_packet_type(Networking::RakNet::PacketType packetType) -> void;
     auto write_string(const std::string &string) -> void;
     auto write_bytes(const std::vector<std::uint8_t> &bytes) -> void;
 

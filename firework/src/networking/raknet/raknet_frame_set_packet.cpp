@@ -3,13 +3,14 @@
 #include "../../binary/binary_reader.hpp"
 #include "../../binary/binary_writer.hpp"
 #include "../utils/byte.hpp"
+#include "raknet_connection.hpp"
 
-namespace Firework::Networking
+namespace Firework::Networking::RakNet
 {
     
-auto FrameSetPacket::is_reliable(RakNetFrame::Reliability reliability) -> bool {
+auto FrameSetPacket::is_reliable(Frame::Reliability reliability) -> bool {
     switch (reliability) {
-        using enum RakNetFrame::Reliability;
+        using enum Frame::Reliability;
         case Reliable:
         case ReliableOrdered:
         case ReliableSequenced:
@@ -21,9 +22,9 @@ auto FrameSetPacket::is_reliable(RakNetFrame::Reliability reliability) -> bool {
     }
 }
 
-auto FrameSetPacket::is_sequenced(RakNetFrame::Reliability reliability) -> bool {
+auto FrameSetPacket::is_sequenced(Frame::Reliability reliability) -> bool {
     switch (reliability) {
-        using enum RakNetFrame::Reliability;
+        using enum Frame::Reliability;
         case UnreliableSequenced:
         case ReliableSequenced:
             return true;
@@ -32,9 +33,9 @@ auto FrameSetPacket::is_sequenced(RakNetFrame::Reliability reliability) -> bool 
     }
 }
 
-auto FrameSetPacket::is_ordered(RakNetFrame::Reliability reliability) -> bool {
+auto FrameSetPacket::is_ordered(Frame::Reliability reliability) -> bool {
     switch (reliability) {
-        using enum RakNetFrame::Reliability;
+        using enum Frame::Reliability;
         case UnreliableSequenced:
         case ReliableOrdered:
         case ReliableSequenced:
@@ -63,14 +64,14 @@ auto FrameSetPacket::from_packet(const std::vector<std::uint8_t> &data) -> std::
 
     // Read all frames
     while (reader.remaining() > 0) {
-        RakNetFrame frame{};
+        Frame frame{};
 
         auto flagsOpt = reader.read_u8();
         if (!sequenceNumberOpt) return std::nullopt;
         std::uint8_t flags = *flagsOpt;
         
         std::uint8_t reliabilityBits = (flags & 0b11100000) >> 5;
-        frame.reliability = static_cast<RakNetFrame::Reliability>(reliabilityBits);
+        frame.reliability = static_cast<Frame::Reliability>(reliabilityBits);
         frame.isFragmented = flags & 0b00010000;
 
         frame.isReliable  = is_reliable(frame.reliability);
@@ -127,46 +128,48 @@ auto FrameSetPacket::from_packet(const std::vector<std::uint8_t> &data) -> std::
     return result;
 }
 
-auto FrameSetPacket::from_partial_frames(std::vector<RakNetPartialFrame> &packets, RakNetConnection &connection) -> std::vector<FrameSetPacket> {
+auto FrameSetPacket::from_partial_frames(std::vector<PartialFrame> &packets, Connection &connection) -> std::vector<FrameSetPacket> {
     std::vector<FrameSetPacket> frameSetPackets{};
 
-    // TODO: implement sending multiple payloads in one packet
-    for (RakNetPartialFrame &partialFrame : packets) {
-        std::size_t headerSize = RakNetFrame::COMMON_HEADER_SIZE;
+    std::size_t maxFrameSize = connection.MTU 
+        - 28                // IP (20) + UDP (8)
+        - 1                 // Frame set packet ID
+        - sizeof(uint24_t); // Frame set packet sequence number
+
+    std::size_t mergedFramesSize = 0;
+    FrameSetPacket mergedFrameSetPacket{};
+    for (PartialFrame &partialFrame : packets) {
+        std::size_t headerSize = Frame::COMMON_HEADER_SIZE;
         std::size_t payloadSize = partialFrame.payload.size();
 
-        RakNetFrame frame{};
+        Frame frame{};
         frame.reliability = partialFrame.reliability;
         frame.isReliable = is_reliable(frame.reliability);
         frame.isSequenced = is_sequenced(frame.reliability);
         frame.isOrdered = is_ordered(frame.reliability);
 
         if (frame.isReliable)
-            headerSize += RakNetFrame::RELIABLE_HEADER_SIZE;
+            headerSize += Frame::RELIABLE_HEADER_SIZE;
         
         if (frame.isSequenced) {
-            headerSize += RakNetFrame::SEQUENCED_HEADER_SIZE;
+            headerSize += Frame::SEQUENCED_HEADER_SIZE;
             frame.sequencedFrameIndex = connection.nextSequencedFrameIdx++;
         }
 
         if (frame.isSequenced || frame.isOrdered) {
             if (!frame.isSequenced)
-                headerSize += RakNetFrame::ORDERED_HEADER_SIZE;
+                headerSize += Frame::ORDERED_HEADER_SIZE;
             
             frame.orderChannel = partialFrame.orderChannel;
             frame.orderedFrameIndex = connection.orderingChannels[partialFrame.orderChannel]++;
         }
 
-        std::size_t maxPayloadSize = connection.MTU
-            - 28                // IP (20) + UDP (8)
-            - 1                 // Frame set packet ID
-            - sizeof(uint24_t)  // Frame set packet sequence number
-            - headerSize;
+        std::size_t maxPayloadSize = maxFrameSize - headerSize;
 
         // The payload needs to be seperated into multiple frame set packets
         if (payloadSize > maxPayloadSize) {
             // Each packet now gets the fragmented header
-            maxPayloadSize -= RakNetFrame::FRAGMENT_HEADER_SIZE;
+            maxPayloadSize -= Frame::FRAGMENT_HEADER_SIZE;
 
             std::size_t numFullPackets = payloadSize / maxPayloadSize;
             std::size_t rem = payloadSize % maxPayloadSize;
@@ -187,11 +190,11 @@ auto FrameSetPacket::from_partial_frames(std::vector<RakNetPartialFrame> &packet
             }
 
             std::uint16_t compoundID = connection.nextCompoundID++;
-            for (std::size_t i = 0; i < payloads.size(); i++) {
+            for (std::uint32_t i = 0; i < payloads.size(); i++) {
                 std::vector<std::uint8_t> &payload = payloads[i];
 
                 // Copy header
-                RakNetFrame fragmentedFrame = frame;
+                Frame fragmentedFrame = frame;
                 fragmentedFrame.isFragmented = true;
                 fragmentedFrame.payloadSizeBits = payload.size() * 8;
                 
@@ -199,7 +202,7 @@ auto FrameSetPacket::from_partial_frames(std::vector<RakNetPartialFrame> &packet
                 if (fragmentedFrame.isReliable)
                     fragmentedFrame.reliableFrameIndex = connection.nextReliableFrameIdx++;
 
-                fragmentedFrame.compoundSize = payloads.size();
+                fragmentedFrame.compoundSize = static_cast<std::uint32_t>(payloads.size());
                 fragmentedFrame.compoundID = compoundID;
                 fragmentedFrame.fragmentIdx = i;
 
@@ -220,13 +223,29 @@ auto FrameSetPacket::from_partial_frames(std::vector<RakNetPartialFrame> &packet
 
         frame.payloadSizeBits = payloadSize * 8;
         frame.payload = std::move(partialFrame.payload);
+        
+        std::size_t frameSize = headerSize + payloadSize;
+        if (mergedFramesSize + frameSize < maxFrameSize) {
+            // Add this frame to the merged packet
+            mergedFrameSetPacket._frames.push_back(std::move(frame));
+            mergedFrameSetPacket._sequenceNumber = connection.nextSequenceNumber++;
+        }
+        else {
+            // Add the old, too big merged frame packet to the list
+            if (!mergedFrameSetPacket._frames.empty())
+                frameSetPackets.push_back(std::move(mergedFrameSetPacket));
+            
+            // Start a new merged packet
+            mergedFrameSetPacket = FrameSetPacket{};
+            mergedFrameSetPacket._frames.push_back(std::move(frame));
+            mergedFrameSetPacket._sequenceNumber = connection.nextSequenceNumber++;
+        }
 
-        FrameSetPacket packet{};
-        packet._frames.push_back(std::move(frame));
-        packet._sequenceNumber = connection.nextSequenceNumber++;
-
-        frameSetPackets.push_back(std::move(packet));
+        mergedFramesSize += frameSize;
     }
+
+    if (mergedFrameSetPacket._frames.size() > 0)
+        frameSetPackets.push_back(std::move(mergedFrameSetPacket));
 
     return frameSetPackets;
 }
@@ -235,4 +254,4 @@ auto FrameSetPacket::encode() const -> std::vector<std::uint8_t> {
     return {};
 }
 
-} // namespace Firework::Networking
+} // namespace Firework::Networking::RakNet

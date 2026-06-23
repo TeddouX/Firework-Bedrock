@@ -22,11 +22,11 @@ auto BinaryReader::read_u8() -> std::optional<std::uint8_t> {
     return _data[_offset++];
 }
 
-auto BinaryReader::read_packet_type() -> std::optional<Networking::RakNetPacketType> {
+auto BinaryReader::read_packet_type() -> std::optional<Networking::RakNet::PacketType> {
     auto u8 = read_u8();
     if (!u8)
         return std::nullopt;
-    return static_cast<Networking::RakNetPacketType>(*u8);
+    return static_cast<Networking::RakNet::PacketType>(*u8);
 }
 
 

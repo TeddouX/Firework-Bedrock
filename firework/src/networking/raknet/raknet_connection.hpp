@@ -5,21 +5,22 @@
 #include <cstdint>
 #include <set>
 #include <array>
+#include <vector>
 
 #include "../uint24.hpp"
 #include "../address.hpp"
 #include "raknet_packets.hpp"
 
-namespace Firework::Networking
+namespace Firework::Networking::RakNet
 {
     
-struct RakNetConnection {
+struct Connection {
     static constexpr std::chrono::duration ACK_FLUSH_INTERVAL = std::chrono::milliseconds(10);
     static constexpr std::size_t MAX_ORDERING_CHANNELS = 32;
 
     struct OrderingChannel {
         uint24_t expectedOrderIndex{0u};
-        std::map<uint24_t, RakNetFrame> outOfOrderBuffer{};
+        std::map<uint24_t, Frame> outOfOrderBuffer{};
     };
 
     AddressInfo address;
@@ -72,7 +73,7 @@ struct RakNetConnection {
     auto update_sequence(uint24_t seq) -> void;
 
     // Returns an empty vector if the frame should be skipped
-    auto update_frame_level_data(const RakNetFrame &frame) -> std::vector<RakNetFrame>;
+    auto update_frame_level_data(const Frame &frame) -> std::vector<Frame>;
 };
 
-} // namespace Firework::Networking
+} // namespace Firework::Networking::RakNet

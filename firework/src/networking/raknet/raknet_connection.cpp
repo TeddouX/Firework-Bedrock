@@ -1,9 +1,9 @@
 #include "raknet_connection.hpp"
 
-namespace Firework::Networking
+namespace Firework::Networking::RakNet
 {
     
-auto RakNetConnection::update_sequence(uint24_t seq) -> void {
+auto Connection::update_sequence(uint24_t seq) -> void {
     missingSequenceNumbers.erase(seq);
     pendingACKsequenceNumbers.insert(seq);
 
@@ -28,8 +28,8 @@ auto RakNetConnection::update_sequence(uint24_t seq) -> void {
     }
 }
 
-auto RakNetConnection::update_frame_level_data(const RakNetFrame &frame) -> std::vector<RakNetFrame> {
-    std::vector<RakNetFrame> frames;
+auto Connection::update_frame_level_data(const Frame &frame) -> std::vector<Frame> {
+    std::vector<Frame> frames;
 
     if (frame.isReliable && frame.reliableFrameIndex) {
         uint24_t idx = *frame.reliableFrameIndex;
@@ -102,8 +102,8 @@ auto RakNetConnection::update_frame_level_data(const RakNetFrame &frame) -> std:
     return frames;
 }
 
-auto RakNetConnection::on_frame_set_sent(const FrameSetPacket &frameSet) -> void {
+auto Connection::on_frame_set_sent(const FrameSetPacket &frameSet) -> void {
 
 }
 
-} // namespace Firework::Networking
+} // namespace Firework::Networking::RakNet

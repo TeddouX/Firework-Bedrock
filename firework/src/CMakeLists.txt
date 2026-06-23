@@ -15,6 +15,8 @@ target_sources(FireworkSource PRIVATE
 
     "networking/raknet/raknet_connection.cpp"
     "networking/raknet/raknet_connection.hpp"
+    "networking/raknet/raknet_frame_set_packet.cpp"
+    "networking/raknet/raknet_frame_set_packet.hpp"
     "networking/raknet/raknet_packets.cpp"
     "networking/raknet/raknet_packets.hpp"
     "networking/raknet/raknet_server.cpp"

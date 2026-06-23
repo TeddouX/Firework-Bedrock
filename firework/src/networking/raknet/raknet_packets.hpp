@@ -8,17 +8,16 @@
 #include "../address.hpp"
 #include "../udp_packet.hpp"
 #include "../uint24.hpp"
-#include "raknet_connection.hpp"
 #include "raknet_frame_set_packet.hpp"
 
-namespace Firework::Networking
+namespace Firework::Networking::RakNet
 {
     
-constexpr std::uint8_t RAKNET_MAGIC[] = { 0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 
+constexpr std::uint8_t MAGIC[] = { 0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 
                                           0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78 };
-constexpr std::size_t RAKNET_MAGIC_SIZE = sizeof(RAKNET_MAGIC);
+constexpr std::size_t MAGIC_SIZE = sizeof(MAGIC);
 
-enum class RakNetPacketType : std::uint8_t {
+enum class PacketType : std::uint8_t {
     UNCONNECTED_PING_1          = 0x01,
     UNCONNECTED_PING_2          = 0x02,
     UNCONNECTED_PONG            = 0x1c,
@@ -53,7 +52,7 @@ struct UnconnectedPingPacket {
 
     static constexpr std::size_t SIZE = 1 
         + sizeof(time) 
-        + RAKNET_MAGIC_SIZE 
+        + MAGIC_SIZE 
         + sizeof(clientGUID);
 
     static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<UnconnectedPingPacket>;
@@ -82,7 +81,7 @@ struct OpenConnectionRequest1Packet {
     std::uint16_t MTU;
 
     static constexpr std::size_t MIN_SIZE = 1
-        + RAKNET_MAGIC_SIZE
+        + MAGIC_SIZE
         + sizeof(protocolVersion);
 
     static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<OpenConnectionRequest1Packet>;
@@ -99,7 +98,7 @@ struct OpenConnectionReply1Packet: public IClientBoundPacket {
     std::uint16_t MTU;
 
     static constexpr std::size_t SIZE = 1
-        + RAKNET_MAGIC_SIZE
+        + MAGIC_SIZE
         + sizeof(serverGUID)
         + sizeof(bool)
         + sizeof(MTU); 
@@ -120,7 +119,7 @@ struct OpenConnectionRequest2Packet {
     std::uint64_t clientGUID;
 
     static constexpr std::size_t SIZE = 1
-        + RAKNET_MAGIC_SIZE
+        + MAGIC_SIZE
         + 7
         + sizeof(MTU)
         + sizeof(clientGUID);
@@ -140,7 +139,7 @@ struct OpenConnectionReply2Packet: public IClientBoundPacket {
     std::uint16_t MTU;
     
     static constexpr std::size_t SIZE = 1
-        + RAKNET_MAGIC_SIZE
+        + MAGIC_SIZE
         + sizeof(serverGUID)
         + 7
         + sizeof(MTU)
@@ -185,4 +184,4 @@ struct ConnectionRequestAcceptedPacket: public IClientBoundPacket {
     auto encode() const -> std::vector<std::uint8_t> override;
 };
 
-} // namespace Firework::Networking
+} // namespace Firework::Networking::RakNet

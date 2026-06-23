@@ -12,7 +12,7 @@ auto BinaryWriter::write_u8(std::uint8_t val) -> void {
     _data.push_back(val);
 }
 
-auto BinaryWriter::write_packet_type(Networking::RakNetPacketType packetType) -> void {
+auto BinaryWriter::write_packet_type(Networking::RakNet::PacketType packetType) -> void {
     _data.push_back(static_cast<std::uint8_t>(packetType));
 }
 

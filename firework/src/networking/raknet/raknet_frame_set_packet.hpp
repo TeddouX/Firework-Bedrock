@@ -4,12 +4,13 @@
 #include <vector>
 
 #include "../uint24.hpp"
-#include "raknet_connection.hpp"
 
-namespace Firework::Networking
+namespace Firework::Networking::RakNet
 {
 
-struct RakNetFrame {
+struct Connection;
+
+struct Frame {
     enum class Reliability : std::uint8_t {
                                             // Is reliable      Is ordered      Is sequenced
         Unreliable = 0,                     // False            False           False
@@ -55,8 +56,8 @@ struct RakNetFrame {
     std::vector<std::uint8_t> payload;
 };
 
-struct RakNetPartialFrame {
-    RakNetFrame::Reliability reliability;
+struct PartialFrame {
+    Frame::Reliability reliability;
 
     // Only if ordered
     // 0 is reserved, but default so be careful ;)
@@ -67,25 +68,25 @@ struct RakNetPartialFrame {
 
 class FrameSetPacket {
 public:
-    static auto is_reliable(RakNetFrame::Reliability reliability) -> bool;
-    static auto is_sequenced(RakNetFrame::Reliability reliability) -> bool;
-    static auto is_ordered(RakNetFrame::Reliability reliability) -> bool;
+    static auto is_reliable(Frame::Reliability reliability) -> bool;
+    static auto is_sequenced(Frame::Reliability reliability) -> bool;
+    static auto is_ordered(Frame::Reliability reliability) -> bool;
 
     static auto from_packet(const std::vector<std::uint8_t> &data) -> std::optional<FrameSetPacket>;
 
     // Do not access the frames or data contained in them after this method was called
-    static auto from_partial_frames(std::vector<RakNetPartialFrame> &frames, RakNetConnection &connection) -> std::vector<FrameSetPacket>;
+    static auto from_partial_frames(std::vector<PartialFrame> &frames, Connection &connection) -> std::vector<FrameSetPacket>;
     
     auto encode() const -> std::vector<std::uint8_t>;
     
-    auto frames() const -> const std::vector<RakNetFrame> & { return _frames; } 
+    auto frames() const -> const std::vector<Frame> & { return _frames; } 
     auto sequence_number() const -> const uint24_t & { return _sequenceNumber; } 
     
 private:
-    uint24_t                    _sequenceNumber;
-    std::vector<RakNetFrame>    _frames;
+    uint24_t            _sequenceNumber;
+    std::vector<Frame>  _frames;
     
     FrameSetPacket() = default;
 };
 
-} // namespace Firework::Networking
+} // namespace Firework::Networking::RakNet

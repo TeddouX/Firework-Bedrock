@@ -12,7 +12,7 @@
 #include "../uint24.hpp"
 #include "raknet_connection.hpp"
 
-namespace Firework::Networking
+namespace Firework::Networking::RakNet
 {
     
 // Reserved for raknet communication
@@ -32,9 +32,9 @@ struct ServerProperties {
     std::uint16_t portIPv6;
 };
 
-class RakNetServer {
+class Server {
 public:
-    RakNetServer(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer);
+    Server(const ServerProperties &serverProperties, std::shared_ptr<UDPServer> udpServer);
 
     auto update_server_properties(const ServerProperties &serverProperties) -> void;
     auto handle_packet(const UDPPacket &packet) -> void;
@@ -51,7 +51,7 @@ private:
 
     std::shared_ptr<UDPServer> _udpServer;
     // ip:port -> connection, these are the connections that have sent a Connection Request 1 packet
-    std::unordered_map<AddressInfo, RakNetConnection> _openConnections;
+    std::unordered_map<AddressInfo, Connection> _openConnections;
 
     
     auto properties_to_string() -> const std::string &;
@@ -61,10 +61,10 @@ private:
     auto handle_open_connection_req_2(const AddressInfo &addrInfo, const OpenConnectionRequest2Packet &packet) -> void;
     auto handle_connection_request(const AddressInfo &addrInfo, const ConnectionRequestPacket &packet) -> void;
     
-    auto decode_frame_set(const UDPPacket &packet) -> std::vector<RakNetFrame>;
-    auto send_in_frame_set(RakNetConnection &connection, RakNetPartialFrame &partialFrame) -> bool;
+    auto decode_frame_set(const UDPPacket &packet) -> std::vector<Frame>;
+    auto send_in_frame_set(Connection &connection, PartialFrame &partialFrame) -> bool;
 
     auto handle_packet(const AddressInfo &addrInfo, const std::vector<std::uint8_t> &packet) -> void;
 };
 
-} // namespace Firework::Networking
+} // namespace Firework::Networking::RakNet
