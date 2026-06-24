@@ -31,6 +31,8 @@ auto Connection::update_sequence(uint24_t seq) -> void {
 auto Connection::update_frame_level_data(const Frame &frame) -> std::vector<Frame> {
     std::vector<Frame> frames;
 
+    // TODO: handle split frames
+
     if (frame.isReliable && frame.reliableFrameIndex) {
         uint24_t idx = *frame.reliableFrameIndex;
 

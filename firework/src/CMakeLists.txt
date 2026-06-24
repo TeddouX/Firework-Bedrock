@@ -1,7 +1,13 @@
 cmake_minimum_required(VERSION 4.1)
+message(STATUS "Toolchain: ${CMAKE_TOOLCHAIN_FILE}")
 project(FireworkSource VERSION 0.0.1)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
+
+find_package(nlohmann_json  CONFIG REQUIRED)
+find_package(OpenSSL               REQUIRED)
+find_package(ZLIB                  REQUIRED)
+
 
 add_executable(FireworkSource)
 target_sources(FireworkSource PRIVATE
@@ -34,13 +40,22 @@ target_sources(FireworkSource PRIVATE
     "main.cpp"
 )
 
+target_link_libraries(FireworkSource PRIVATE
+    OpenSSL::Crypto
+    ZLIB::ZLIB
+    nlohmann_json::nlohmann_json
+)
+
 if (WIN32)
     target_sources(FireworkSource PRIVATE
         "networking/socket/windows/win_udp_server.hpp"
         "networking/socket/windows/win_udp_server.cpp"
     )
 
-    target_link_libraries(FireworkSource PUBLIC wsock32 ws2_32)
+    target_link_libraries(FireworkSource PRIVATE 
+        wsock32 
+        ws2_32
+    )
 elseif (UNIX AND NOT APPLE)
     target_sources(FireworkSource PRIVATE
         

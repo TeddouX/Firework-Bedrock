@@ -7,8 +7,8 @@
 #include <ws2tcpip.h>
 #include <optional>
 
-#include "../utils/byte.hpp"
-#include "../../core/logger.hpp"
+#include "../../utils/byte.hpp"
+#include "../../../core/logger.hpp"
 
 namespace Firework::Networking::Socket
 {

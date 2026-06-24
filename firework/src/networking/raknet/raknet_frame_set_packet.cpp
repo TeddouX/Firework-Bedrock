@@ -49,8 +49,6 @@ auto FrameSetPacket::is_ordered(Frame::Reliability reliability) -> bool {
 auto FrameSetPacket::from_packet(const std::vector<std::uint8_t> &data) -> std::optional<FrameSetPacket> {
     BinaryReader reader{data};
 
-    // TODO: handle split packets with a raknetconnection
-
     // Skip ID
     if (!reader.advance(1))
         return std::nullopt;

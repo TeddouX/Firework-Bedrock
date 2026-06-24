@@ -4,7 +4,7 @@
 #include <string_view>
 
 #include "../address.hpp"
-#include "networking.hpp"
+#include "../networking.hpp"
 
 namespace Firework::Networking::Socket
 {
