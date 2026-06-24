@@ -1,6 +1,9 @@
 #pragma once
 #include <vector>
 
+#include "../../binary/binary_writer.hpp"
+#include "../../binary/binary_reader.hpp"
+
 namespace Firework
 {
   
@@ -27,9 +30,9 @@ template <typename _Type>
 class Codec;
 
 template <typename _Type>
-concept HasCodec = requires(const _Type& obj, const std::vector<std::uint8_t>& data, std::size_t off) {
-    { Codec<_Type>::encode(obj) } -> std::same_as<std::vector<std::uint8_t>>;
-    { Codec<_Type>::decode(data, off) } -> std::same_as<_Type>;
+concept HasCodec = requires(const _Type &value, BinaryWriter &writer, BinaryReader &reader) {
+    { Codec<_Type>::encode(writer, value) } -> std::same_as<void>;
+    { Codec<_Type>::decode(reader) } -> std::same_as<std::optional<_Type>>;
 };
 
 template <typename _Type>
@@ -40,16 +43,12 @@ concept CodecOrSkip = HasCodec<_Type> || is_skip<_Type>::value;
 template <std::integral _Type>
 class Codec<_Type> {
 public:
-    static auto encode(const _Type &value) -> std::vector<std::uint8_t> {
-        std::vector<std::uint8_t> bytes(sizeof(_Type));
-        std::memcpy(bytes.data(), &value, sizeof(_Type));
-        return bytes;
+    static auto encode(BinaryWriter &writer, const _Type &value) -> void {
+        writer.write_integral(value);
     }
 
-    static auto decode(const std::vector<std::uint8_t> &data, std::size_t off) -> _Type {
-        _Type value;
-        std::memcpy(&value, data.data() + off, sizeof(_Type));
-        return value;
+    static auto decode(BinaryReader &reader) -> std::optional<_Type> {
+        return reader.read_integral<_Type>();
     }
 };
 

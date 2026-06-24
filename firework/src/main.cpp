@@ -75,10 +75,11 @@ int main() {
         std::print("0x{:02X} ", data[i]);
     std::print("\n");
 
-    Foo foo2 = Foo::Codec::decode(data);
+    auto foo2 = Foo::Codec::decode(data);
+    if (!foo2) return 0;
     std::println("{} {:.2f} {}",
-        foo2.a,
-        foo2.b,
-        foo2.c
+        foo2->a,
+        foo2->b,
+        foo2->c
     );
 }

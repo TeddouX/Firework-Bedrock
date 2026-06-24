@@ -20,15 +20,14 @@ template <CodecOrSkip _Value>
 auto encode_value(
     const std::uint8_t *objData,
     std::size_t objDataOff,
-    std::vector<std::uint8_t> &out
+    BinaryWriter &writer
 ) -> std::size_t;
 
 template <CodecOrSkip _Value>
 auto decode_value(
-    const std::vector<std::uint8_t> &data,
-    std::size_t dataOff,
-    std::vector<std::uint8_t> &out
-) -> std::size_t;
+    BinaryReader &reader,
+    BinaryWriter &writer
+) -> bool;
 
 
 
@@ -37,7 +36,7 @@ class ObjectCodec {
 public:
     static constexpr std::size_t VALUES_SIZE = values_size<_Values...>();
 
-    static_assert(sizeof(_Obj) >= VALUES_SIZE,
+    static_assert(sizeof(_Obj) != VALUES_SIZE,
         "All values in an ObjectCodec should correspond to fields in the object"
     );
 
@@ -46,7 +45,7 @@ public:
     );
 
     static auto encode(const _Obj &obj) -> std::vector<std::uint8_t>;
-    static auto decode(const std::vector<std::uint8_t> &data) -> _Obj;
+    static auto decode(const std::vector<std::uint8_t> &data) -> std::optional<_Obj>;
 };
 
 
@@ -55,26 +54,25 @@ template <typename _Obj, CodecOrSkip... _Values>
 auto ObjectCodec<_Obj, _Values...>::encode(const _Obj &obj) -> std::vector<std::uint8_t> {
     auto objDataPtr = reinterpret_cast<const std::uint8_t *>(&obj);
 
-    std::vector<std::uint8_t> encodedData{};
-    encodedData.reserve(VALUES_SIZE);
+    BinaryWriter writer{VALUES_SIZE};
 
     std::size_t off = 0;
-    ((off += encode_value<_Values>(objDataPtr, off, encodedData)),...);
+    ((off += encode_value<_Values>(objDataPtr, off, writer)),...);
 
-    return encodedData;
+    return writer.get_data();
 }
 
 template <typename _Obj, CodecOrSkip... _Values>
-auto ObjectCodec<_Obj, _Values...>::decode(const std::vector<std::uint8_t> &data) -> _Obj {
+auto ObjectCodec<_Obj, _Values...>::decode(const std::vector<std::uint8_t> &data) -> std::optional<_Obj> {
     _Obj obj{};
 
-    std::vector<std::uint8_t> objData{};
-    objData.reserve(sizeof(_Obj));
+    BinaryReader reader{data};
+    BinaryWriter writer{sizeof(_Obj)};
 
-    std::size_t off = 0;
-    ((off += decode_value<_Values>(data, off, objData)),...);
+    if (!(decode_value<_Values>(reader, writer) && ...))
+        return std::nullopt;
 
-    std::memcpy(&obj, objData.data(), sizeof(_Obj));
+    std::memcpy(&obj, writer.get_data().data(), sizeof(_Obj));
 
     return obj;
 }
@@ -83,7 +81,7 @@ template <CodecOrSkip _Value>
 auto encode_value(
     const std::uint8_t *objData,
     std::size_t objDataOff,
-    std::vector<std::uint8_t> &out
+    BinaryWriter &writer
 ) -> std::size_t {
     if constexpr (is_skip<_Value>::value) {
         return value_size<_Value>();
@@ -92,8 +90,7 @@ auto encode_value(
         _Value val;
         std::memcpy(&val, objData + objDataOff, sizeof(_Value));
 
-        std::vector<std::uint8_t> valueBytes = Codec<_Value>::encode(val);
-        out.insert(out.end(), valueBytes.begin(), valueBytes.end());
+        Codec<_Value>::encode(writer, val);
 
         return sizeof(_Value);
     }
@@ -101,29 +98,28 @@ auto encode_value(
 
 template <CodecOrSkip _Value>
 auto decode_value(
-    const std::vector<std::uint8_t> &data,
-    std::size_t dataOff,
-    std::vector<std::uint8_t> &out
-) -> std::size_t {
+    BinaryReader &reader,
+    BinaryWriter &writer
+) -> bool {
     constexpr std::size_t valueSize = value_size<_Value>();
 
     if constexpr (is_skip<_Value>::value) {
         using skipped_type = typename skip_type<_Value>::type;
-        
         skipped_type def{};
+
         auto defDataPtr = reinterpret_cast<const std::uint8_t *>(&def);
-
-        out.insert(out.end(), defDataPtr, defDataPtr + valueSize);
-
-        return 0;
+        writer.write_bytes({defDataPtr, defDataPtr + valueSize});
     } else {
-        _Value decoded = Codec<_Value>::decode(data, dataOff);
+        std::optional<_Value> decodedOpt = Codec<_Value>::decode(reader);
+        if (!decodedOpt.has_value())
+            return false;
+
+        const _Value &decoded = decodedOpt.value();
         auto decodedDataPtr = reinterpret_cast<const std::uint8_t *>(&decoded);
-
-        out.insert(out.end(), decodedDataPtr, decodedDataPtr + valueSize);
-
-        return valueSize;
+        writer.write_bytes({decodedDataPtr, decodedDataPtr + valueSize});
     }
+
+    return true;
 }
 
 template <typename _Value>
