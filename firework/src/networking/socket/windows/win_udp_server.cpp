@@ -8,12 +8,12 @@
 #include <optional>
 
 #include "../../utils/byte.hpp"
-#include "../../../core/logger.hpp"
 
 namespace Firework::Networking::Socket
 {
 
 constexpr const std::uint8_t LOCAL_IP_BYTES[] = {127, 0, 0, 1};
+static Firework::Logger LOGGER{"Firework", "Windows Socket"};
 
 WinUDPServer::WinUDPServer()
     : _receiveSocket{INVALID_SOCKET}

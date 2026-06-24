@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.1)
 message(STATUS "Toolchain: ${CMAKE_TOOLCHAIN_FILE}")
-project(FireworkSource VERSION 0.0.1)
+project(FireworkServer VERSION 0.0.1)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
@@ -9,16 +9,21 @@ find_package(OpenSSL               REQUIRED)
 find_package(ZLIB                  REQUIRED)
 
 
-add_executable(FireworkSource)
-target_sources(FireworkSource PRIVATE
+add_executable(FireworkServer)
+target_sources(FireworkServer PRIVATE
     "binary/binary_reader.cpp"
     "binary/binary_reader.hpp"
     "binary/binary_writer.cpp"
     "binary/binary_writer.hpp"
     
+    "core/codec/codec.hpp"
+    "core/codec/object_codec.hpp"
     "core/logger.cpp"
     "core/logger.hpp"
 
+    "networking/bedrock_protocol/bedrock_protocol.hpp"
+    "networking/bedrock_protocol/bp_decryptor.cpp"
+    "networking/bedrock_protocol/bp_decryptor.hpp"
     "networking/raknet/raknet_connection.cpp"
     "networking/raknet/raknet_connection.hpp"
     "networking/raknet/raknet_frame_set_packet.cpp"
@@ -40,24 +45,24 @@ target_sources(FireworkSource PRIVATE
     "main.cpp"
 )
 
-target_link_libraries(FireworkSource PRIVATE
+target_link_libraries(FireworkServer PRIVATE
     OpenSSL::Crypto
     ZLIB::ZLIB
     nlohmann_json::nlohmann_json
 )
 
 if (WIN32)
-    target_sources(FireworkSource PRIVATE
+    target_sources(FireworkServer PRIVATE
         "networking/socket/windows/win_udp_server.hpp"
         "networking/socket/windows/win_udp_server.cpp"
     )
 
-    target_link_libraries(FireworkSource PRIVATE 
+    target_link_libraries(FireworkServer PRIVATE 
         wsock32 
         ws2_32
     )
 elseif (UNIX AND NOT APPLE)
-    target_sources(FireworkSource PRIVATE
+    target_sources(FireworkServer PRIVATE
         
     )
 elseif (APPLE)

@@ -68,6 +68,8 @@ struct Connection {
 
     std::array<OrderingChannel, MAX_ORDERING_CHANNELS> incomingOrderingChannels{};
 
+    auto on_packet_received() -> void;
+
     auto on_frame_set_sent(FrameSetPacket &frameSet) -> void;
 
     auto on_ack(const ACKPacket &ack) -> void;

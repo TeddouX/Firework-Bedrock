@@ -117,6 +117,8 @@ auto Connection::on_frame_set_sent(FrameSetPacket &frameSet) -> void {
 }
 
 auto Connection::on_ack(const ACKPacket &ack) -> void {
+    on_packet_received();
+
     for (const Record &record : ack.records) {
         if (record.isSingle && record.sequenceNumber) {
             sentFrameSetPackets.erase(*record.sequenceNumber);
@@ -132,6 +134,8 @@ auto Connection::on_ack(const ACKPacket &ack) -> void {
 }
 
 auto Connection::on_nack(const NACKPacket &nack) -> std::vector<FrameSetPacket> {
+    on_packet_received();
+    
     std::vector<FrameSetPacket> frames;
     for (const Record &record : nack.records) {
         if (record.isSingle && record.sequenceNumber) {
@@ -148,5 +152,10 @@ auto Connection::on_nack(const NACKPacket &nack) -> std::vector<FrameSetPacket> 
     
     return frames;
 }
+
+auto Connection::on_packet_received() -> void {
+    lastReceivedTime = std::chrono::steady_clock::now();
+}
+
 
 } // namespace Firework::Networking::RakNet

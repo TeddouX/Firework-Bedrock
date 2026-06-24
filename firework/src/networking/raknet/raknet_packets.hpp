@@ -32,10 +32,12 @@ enum class PacketType : std::uint8_t {
     NEW_INCOMING_CONNECTION     = 0x13,
     DISCONNECT                  = 0x15,
     INCOMPATIBLE_PROTOCOL       = 0x19,
-
+    
     FRAME_SET                   = 0x80,
     ACK                         = 0xC0,
     NACK                        = 0xA0,
+
+    GAME_PACKET                 = 0xFE,
 };
 
 // ID: uint8
@@ -215,5 +217,38 @@ struct NACKPacket {
     auto encode() const -> std::vector<std::uint8_t>;
 };
 
+// ID: uint8
+// Time: uint64
+struct ConnectedPingPacket {
+    std::uint64_t time;
+
+    static constexpr std::size_t SIZE = 1
+        + sizeof(time);
+
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<ConnectedPingPacket>;
+};
+
+// ID: uint8
+// Ping Time: uint64
+// Pong Time: uint64
+struct ConnectedPongPacket {
+    std::uint64_t pingTime;
+    std::uint64_t pongTime;
+
+    static constexpr std::size_t SIZE = 1
+        + sizeof(pingTime)
+        + sizeof(pongTime);
+
+    auto encode() const -> std::vector<std::uint8_t>;
+};
+
+// ID: uint8
+// data: uint8 (remaining size of the packet)
+struct GamePacket {
+    std::vector<std::uint8_t> data;
+    Address addr;
+
+    static auto from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<GamePacket>;
+};
 
 } // namespace Firework::Networking::RakNet

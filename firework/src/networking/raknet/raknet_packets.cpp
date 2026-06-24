@@ -104,7 +104,7 @@ auto OpenConnectionRequest2Packet::from_packet(const std::vector<std::uint8_t> &
     reader.advance(MAGIC_SIZE);
 
     std::span<const std::uint8_t> serverAddress = *reader.read_bytes(sizeof(finalPacket.serverAddress));
-    std::copy(serverAddress.begin(), serverAddress.begin(), finalPacket.serverAddress.end());
+    std::copy(serverAddress.begin(), serverAddress.end(), finalPacket.serverAddress.begin());
 
     finalPacket.MTU = network_to_host(*reader.read_integral<std::uint16_t>());
     finalPacket.clientGUID = network_to_host(*reader.read_integral<std::uint64_t>());
@@ -238,6 +238,51 @@ auto NACKPacket::encode() const -> std::vector<std::uint8_t> {
 }
 
 
+auto ConnectedPingPacket::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<ConnectedPingPacket> {
+    if (packet.size() != ConnectedPingPacket::SIZE)
+        return std::nullopt;
+
+    BinaryReader reader{packet};
+
+    PacketType packetType = *reader.read_packet_type();
+    if (packetType != PacketType::CONNECTED_PING)
+        return std::nullopt;
+
+    ConnectedPingPacket finalPacket{};
+    finalPacket.time = *reader.read_integral<std::uint64_t>();
+    
+    return finalPacket;
+}
+
+auto ConnectedPongPacket::encode() const -> std::vector<std::uint8_t> {
+    BinaryWriter writer{ConnectedPongPacket::SIZE};
+    
+    writer.write_packet_type(PacketType::CONNECTED_PONG);
+    writer.write_integral(pingTime);
+    writer.write_integral(pongTime);
+
+    return writer.get_data();
+}
+
+auto GamePacket::from_packet(const std::vector<std::uint8_t> &packet) -> std::optional<GamePacket> {
+    if (packet.empty())
+        return std::nullopt;
+
+    BinaryReader reader{packet};
+
+    PacketType packetType = *reader.read_packet_type();
+    if (packetType != PacketType::GAME_PACKET)
+        return std::nullopt;
+
+    GamePacket finalPacket{};
+    std::span<const std::uint8_t> dataSpan = *reader.read_bytes(reader.remaining());
+    finalPacket.data.insert(finalPacket.data.begin(), dataSpan.begin(), dataSpan.end());
+
+    return std::move(finalPacket);
+}
+
+
+
 auto ip_to_bytes(const Address &addrInfo) -> std::vector<std::uint8_t> {
     std::uint16_t port = addrInfo.port();
     const std::string &ipStr = addrInfo.ipAddr();
@@ -324,6 +369,5 @@ auto encode_records(BinaryWriter &writer, const std::vector<Record> &records) ->
         }
     }
 }
-
 
 } // namespace Firework::Networking::RakNet

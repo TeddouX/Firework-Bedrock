@@ -4,6 +4,7 @@
 #include "../../binary/binary_writer.hpp"
 #include "../utils/byte.hpp"
 #include "raknet_connection.hpp"
+#include "raknet.hpp"
 
 namespace Firework::Networking::RakNet
 {

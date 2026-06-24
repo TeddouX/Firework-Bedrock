@@ -7,6 +7,7 @@
 #include "../../firework.hpp"
 #include "../utils/byte.hpp"
 #include "raknet_packets.hpp"
+#include "raknet.hpp"
 
 namespace Firework::Networking::RakNet
 {
@@ -121,6 +122,16 @@ auto Server::update_connections() -> void {
     }
 }
 
+auto Server::get_time_ms_since_start() -> std::chrono::milliseconds {
+    std::chrono::steady_clock::duration timeDiff = std::chrono::steady_clock::now() - _startTime;
+    return std::chrono::duration_cast<std::chrono::milliseconds>(timeDiff);
+}
+
+auto Server::on_game_packet_received(std::function<void (GamePacket &)> handler) -> void {
+    _gamePacketHandler = handler;
+}
+
+
 auto Server::handle_unconnected_ping(const Address &addrInfo, const UnconnectedPingPacket &packet) -> void {
     UnconnectedPongPacket replyPacket{};
     replyPacket.echoedTime = packet.time;
@@ -156,6 +167,8 @@ auto Server::handle_open_connection_req_2(const Address &addrInfo, const OpenCon
     Connection *conn = get_connection(addrInfo);
     if (!conn) return;
 
+    conn->on_packet_received();
+
     OpenConnectionReply2Packet replyPacket{};
     replyPacket.serverGUID = _guid;
     replyPacket.clientAddress = addrInfo;
@@ -170,12 +183,12 @@ auto Server::handle_connection_request(const Address &addrInfo, const Connection
     Connection *conn = get_connection(addrInfo);
     if (!conn) return;
 
+    conn->on_packet_received();
+
     ConnectionRequestAcceptedPacket replyPacket{};
     replyPacket.clientAddress = addrInfo;
     replyPacket.connectionRequestTime = packet.sendTime;
-
-    std::chrono::steady_clock::duration timeDiff = std::chrono::steady_clock::now() - _startTime;
-    replyPacket.sendTime = std::chrono::duration_cast<std::chrono::milliseconds>(timeDiff).count();
+    replyPacket.sendTime = get_time_ms_since_start().count();
 
     PartialFrame partialFrame{};
     partialFrame.reliability = Frame::Reliability::ReliableOrdered;
@@ -210,6 +223,25 @@ auto Server::handle_nack(const Address &addrInfo, const NACKPacket &packet) -> v
     send_frame_sets(*conn, frameSets);
 
     LOGGER.debug("Received NACK");
+}
+
+auto Server::handle_connected_ping(const Address &addrInfo, const ConnectedPingPacket &packet) -> void {
+    Connection *conn = get_connection(addrInfo);
+    if (!conn) return;
+
+    conn->on_packet_received();
+    
+    ConnectedPongPacket replyPacket{};
+    replyPacket.pingTime = packet.time;
+    replyPacket.pongTime = get_time_ms_since_start().count();
+
+    PartialFrame partialFrame{};
+    partialFrame.reliability = Frame::Reliability::Unreliable;
+    partialFrame.payload = replyPacket.encode();
+
+    send_in_frame_set(*conn, partialFrame);
+
+    LOGGER.debug("Sent ConnectedPOng.");
 }
 
 auto Server::decode_frame_set(const Socket::UDPPacket &packet) -> std::vector<Frame> {
@@ -311,13 +343,37 @@ auto Server::handle_packet(const Address &addrInfo, const std::vector<std::uint8
         }
 
         case CONNECTED_PING: {
-            // TODO
+            auto packet = ConnectedPingPacket::from_packet(data);
+            if (!packet) return;
+
+            handle_connected_ping(addrInfo, *packet);
             
             return;
         }
 
+        case GAME_PACKET: {
+            auto packet = GamePacket::from_packet(data);
+            if (!packet) return;
+
+            Connection *conn = get_connection(addrInfo);
+            if (!conn) return;
+            if (!conn->isFullyConnected) return;
+            
+            packet->addr = addrInfo;
+            if (_gamePacketHandler) {
+                LOGGER.debug("Passing handling of a game packet to the game packet handler");
+                _gamePacketHandler(*packet);
+            }
+
+            return;
+        }
+
         case NEW_INCOMING_CONNECTION: {
-            // Nothing to do here
+            Connection *conn = get_connection(addrInfo);
+            if (!conn) return;
+
+            conn->isFullyConnected = true;
+
             return;
         }
 

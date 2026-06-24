@@ -13,6 +13,8 @@
 namespace Firework::Networking
 {
  
+static Firework::Logger LOGGER{"Firework", "Windows IP"};
+
 auto IPv4_string_to_bytes(const std::string &ipv4Addr) -> std::array<std::uint8_t, 4> {
 #ifdef FIREWORK_WINDOWS
     std::array<std::uint8_t, 4> bytes{};
