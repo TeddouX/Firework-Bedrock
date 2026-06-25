@@ -4,23 +4,12 @@
 
 #include "networking/socket/windows/win_udp_server.hpp"
 #include "networking/raknet/raknet_server.hpp"
-#include "networking/bedrock_protocol/bp_decryptor.hpp"
-#include "core/codec/object_codec.hpp"
+#include "networking/bedrock_protocol/packet/all_packets.hpp"
+#include "networking/bedrock_protocol/packet/packet_registry.hpp"
 
 using namespace Firework;
 
 inline static Firework::Logger LOGGER{"Firework", "Main"};
-
-class Foo {
-public:
-    Foo() = default;
-    
-    using Codec = Firework::ObjectCodec<Foo, unsigned int, Skip<float>, unsigned short>;
-
-    unsigned int a;
-    float b;
-    unsigned short c;
-};
 
 int main() {
     // std::shared_ptr<Networking::Socket::UDPServer> serv = std::make_shared<Networking::Socket::WinUDPServer>();
@@ -65,21 +54,22 @@ int main() {
     //     rakNetServer.update_connections();
     // }
 
-    Foo foo{};
-    foo.a = 21;
-    foo.b = 54.f;
-    foo.c = 50;
-
-    auto data = Foo::Codec::encode(foo);
-    for (int i = 0; i < data.size(); i++)
-        std::print("0x{:02X} ", data[i]);
+    BinaryWriter writer{10};
+    auto packet = std::make_unique<Networking::BP::CS_RequestNetworkSettings>();
+    packet->protocolVersion = 0x123456;
+    Networking::BP::PacketRegistry::encode_packet(std::move(packet), writer);
+ 
+    for (const auto &byte : writer.get_data())
+        std::print("{:02X} ", byte);
     std::print("\n");
 
-    auto foo2 = Foo::Codec::decode(data);
-    if (!foo2) return 0;
-    std::println("{} {:.2f} {}",
-        foo2->a,
-        foo2->b,
-        foo2->c
+    BinaryReader reader{writer.get_data()};
+    std::unique_ptr<Firework::Networking::BP::IBedrockPacket> bla = Networking::BP::PacketRegistry::decode_packet(
+        Networking::BP::PacketType::REQUEST_NETWORK_SETTINGS, 
+        reader
     );
+
+    bla->get_type();
+
+    std::print("{:02X}", dynamic_cast<Networking::BP::CS_RequestNetworkSettings *>(bla.get())->protocolVersion);
 }

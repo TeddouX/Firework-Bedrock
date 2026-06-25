@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "codec.hpp"
+#include "default_codecs.hpp"
 
 
 namespace Firework
@@ -34,7 +35,7 @@ auto decode_value(
 template <typename _Obj, CodecOrSkip... _Values>
 class ObjectCodec {
 public:
-    static constexpr std::size_t VALUES_SIZE = values_size<_Values...>();
+    inline static constexpr std::size_t VALUES_SIZE = values_size<_Values...>();
 
     static_assert(sizeof(_Obj) != VALUES_SIZE,
         "All values in an ObjectCodec should correspond to fields in the object"
@@ -44,17 +45,19 @@ public:
         "_Obj must be default constructible"
     );
 
-    static auto encode(const _Obj &obj) -> std::vector<std::uint8_t>;
-    static auto decode(const std::vector<std::uint8_t> &data) -> std::optional<_Obj>;
+    static auto encode(const _Obj &obj, BinaryWriter &writer) -> std::vector<std::uint8_t>;
+    static auto decode(BinaryReader &reader) -> std::optional<_Obj>;
+
+private:
+    inline static constexpr std::size_t BASE_OFFSET = std::is_polymorphic_v<_Obj> ? sizeof(void*) : 0;
 };
 
 
 
 template <typename _Obj, CodecOrSkip... _Values>
-auto ObjectCodec<_Obj, _Values...>::encode(const _Obj &obj) -> std::vector<std::uint8_t> {
-    auto objDataPtr = reinterpret_cast<const std::uint8_t *>(&obj);
-
-    BinaryWriter writer{VALUES_SIZE};
+auto ObjectCodec<_Obj, _Values...>::encode(const _Obj &obj, BinaryWriter &writer) -> std::vector<std::uint8_t> {
+    // Skip over the vtable (requires more testing)
+    auto objDataPtr = reinterpret_cast<const std::uint8_t *>(&obj) + BASE_OFFSET;
 
     std::size_t off = 0;
     ((off += encode_value<_Values>(objDataPtr, off, writer)),...);
@@ -63,16 +66,18 @@ auto ObjectCodec<_Obj, _Values...>::encode(const _Obj &obj) -> std::vector<std::
 }
 
 template <typename _Obj, CodecOrSkip... _Values>
-auto ObjectCodec<_Obj, _Values...>::decode(const std::vector<std::uint8_t> &data) -> std::optional<_Obj> {
+auto ObjectCodec<_Obj, _Values...>::decode(BinaryReader &reader) -> std::optional<_Obj> {
     _Obj obj{};
 
-    BinaryReader reader{data};
-    BinaryWriter writer{sizeof(_Obj)};
+    BinaryWriter writer{VALUES_SIZE};
 
     if (!(decode_value<_Values>(reader, writer) && ...))
         return std::nullopt;
 
-    std::memcpy(&obj, writer.get_data().data(), sizeof(_Obj));
+    const std::uint8_t* objData = writer.get_data().data();
+    void* objWritePtr = reinterpret_cast<std::uint8_t *>(&obj) + BASE_OFFSET;
+
+    std::memcpy(objWritePtr, objData, VALUES_SIZE);
 
     return obj;
 }

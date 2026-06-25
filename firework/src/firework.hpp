@@ -20,6 +20,8 @@
 namespace Firework 
 {
 
+class uint24_t;
+
 template <typename _Ty>
 concept IsIntegral = requires { std::is_integral_v<_Ty> | std::is_same_v<_Ty, uint24_t>; };
 

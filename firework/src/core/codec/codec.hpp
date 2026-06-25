@@ -1,8 +1,8 @@
 #pragma once
 #include <vector>
 
-#include "../../binary/binary_writer.hpp"
 #include "../../binary/binary_reader.hpp"
+#include "../../binary/binary_writer.hpp"
 
 namespace Firework
 {
@@ -37,19 +37,5 @@ concept HasCodec = requires(const _Type &value, BinaryWriter &writer, BinaryRead
 
 template <typename _Type>
 concept CodecOrSkip = HasCodec<_Type> || is_skip<_Type>::value;
-
-
-// For all integral types
-template <std::integral _Type>
-class Codec<_Type> {
-public:
-    static auto encode(BinaryWriter &writer, const _Type &value) -> void {
-        writer.write_integral(value);
-    }
-
-    static auto decode(BinaryReader &reader) -> std::optional<_Type> {
-        return reader.read_integral<_Type>();
-    }
-};
 
 } // namespace Firework
